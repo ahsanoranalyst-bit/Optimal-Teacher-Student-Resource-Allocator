@@ -4,190 +4,99 @@ import streamlit as st
 import pandas as pd
 from fpdf import FPDF
 from datetime import datetime, date
-import io
 
-# --- 1. SETTINGS & LICENSE ---
+# --- 1. SETTINGS ---
 ACTIVATION_KEY = "PAK-2026"
-EXPIRY_DATE = date(2026, 12, 31)
-
-# Initialize Session States securely
-if 'authenticated' not in st.session_state:
-    st.session_state.authenticated = False
-if 'school_setup_done' not in st.session_state:
-    st.session_state.school_setup_done = False
-if 'school_name' not in st.session_state:
-    st.session_state.school_name = ""
+if 'authenticated' not in st.session_state: st.session_state.authenticated = False
 if 'data_store' not in st.session_state:
-    st.session_state.data_store = {
-        "Section A": [], "Section B": [], "Section C": [], "Section D": []
-    }
+    st.session_state.data_store = {"Section A": [], "Section B": []}
 
-# --- 2. LOGICAL OPTIMIZATION ENGINE (1-200 Scale) ---
-def calculate_optimization(section, data_list):
-    if not data_list:
-        return 0
+# --- 2. THE LOGIC ENGINE (THE HEART OF THE APP) ---
+def get_recommendations():
+    sections = st.session_state.data_store["Section A"]
+    teachers = st.session_state.data_store["Section B"]
     
-    # Logic: More resources/better feedback = higher score towards 200
-    if section == "Section A":
-        # Higher student count with low special needs is efficient
-        total_std = sum(item['Students'] for item in data_list)
-        total_spec = sum(item['Special Needs'] for item in data_list)
-        score = (total_std / 10) - (total_spec * 2)
-    elif section == "Section B":
-        # Experience and PhDs increase score
-        score = sum(item['Experience'] for item in data_list) / len(data_list) * 5
-    else:
-        score = 100 # Base score for others
-        
-    return min(200, max(1, int(score + 50)))
+    if not sections or not teachers:
+        return "Need more data in both Section A and B to suggest matches."
 
-# --- 3. PROFESSIONAL PDF ENGINE ---
-class SchoolPDF(FPDF):
-    def header(self):
-        self.set_font('Helvetica', 'B', 16)
-        self.set_text_color(44, 62, 80)
-        self.cell(0, 10, st.session_state.school_name.upper(), 0, 1, 'C')
-        self.set_font('Helvetica', 'B', 11)
-        self.cell(0, 10, f"DEPARTMENTAL ANALYSIS: {self.section_title}", 0, 1, 'C')
-        self.ln(5)
-        self.line(10, 35, 200, 35)
-
-    def footer(self):
-        self.set_y(-15)
-        self.set_font('Helvetica', 'I', 8)
-        self.cell(0, 10, f'Report Date: {datetime.now().strftime("%Y-%m-%d")} | Confidential', 0, 0, 'C')
-
-def generate_pdf(title, data_list, opt_score):
-    pdf = SchoolPDF()
-    pdf.section_title = title
-    pdf.add_page()
+    # Calculate Class Difficulty (Higher students + Special needs = High Difficulty)
+    class_df = pd.DataFrame(sections)
+    class_df['Difficulty'] = (class_df['Students'] * 0.5) + (class_df['Special Needs'] * 5)
     
-    # Summary Box
-    pdf.set_fill_color(240, 240, 240)
-    pdf.set_font("Helvetica", 'B', 12)
-    pdf.cell(0, 12, f"Resource Optimization Score: {opt_score} / 200", 1, 1, 'C', fill=True)
-    pdf.ln(10)
-    
-    if data_list:
-        df = pd.DataFrame(data_list)
-        # Table Header
-        pdf.set_fill_color(52, 73, 94)
-        pdf.set_text_color(255, 255, 255)
-        pdf.set_font("Helvetica", 'B', 10)
-        
-        col_width = 190 / len(df.columns)
-        for col in df.columns:
-            pdf.cell(col_width, 10, str(col), 1, 0, 'C', fill=True)
-        pdf.ln()
-        
-        # Table Rows
-        pdf.set_text_color(0, 0, 0)
-        pdf.set_font("Helvetica", '', 9)
-        for _, row in df.iterrows():
-            for item in row:
-                pdf.cell(col_width, 9, str(item), 1, 0, 'C')
-            pdf.ln()
-            
-    return pdf.output(dest='S').encode('latin-1')
+    # Calculate Teacher Strength (Experience + Degree)
+    teach_df = pd.DataFrame(teachers)
+    qual_map = {"PhD": 30, "Masters": 20, "Bachelors": 10, "Other": 5}
+    teach_df['Strength'] = (teach_df['Experience'] * 2) + teach_df['Degree'].map(qual_map)
 
-# --- 4. NAVIGATION & ACCESS CONTROL ---
+    # Sorting to match the best with the most challenging
+    class_sorted = class_df.sort_values(by='Difficulty', ascending=False)
+    teach_sorted = teach_df.sort_values(by='Strength', ascending=False)
+
+    matches = []
+    for i in range(min(len(class_sorted), len(teach_sorted))):
+        c_name = f"{class_sorted.iloc[i]['Grade']} ({class_sorted.iloc[i]['Section']})"
+        t_name = teach_sorted.iloc[i]['Teacher']
+        matches.append(f"✅ Suggestion: Assign **{t_name}** to **{c_name}** (High Priority Match)")
+    
+    return matches
+
+# --- 3. MAIN INTERFACE ---
 if not st.session_state.authenticated:
     st.title("🔐 Enterprise Resource Portal")
-    if date.today() > EXPIRY_DATE:
-        st.error("System License Expired. Please renew your subscription.")
-    else:
-        with st.container():
-            key = st.text_input("Activation Key", type="password", help="Enter the 8-digit license key")
-            if st.button("Authenticate System", use_container_width=True):
-                if key == ACTIVATION_KEY:
-                    st.session_state.authenticated = True
-                    st.rerun()
-                else:
-                    st.error("Access Denied: Invalid Key")
-
-elif not st.session_state.school_setup_done:
-    st.title("🏫 Account Setup")
-    school_name = st.text_input("Enter Registered Institution Name")
-    if st.button("Initialize Dashboard"):
-        if school_name:
-            st.session_state.school_name = school_name
-            st.session_state.school_setup_done = True
+    key = st.text_input("Activation Key", type="password")
+    if st.button("Activate"):
+        if key == ACTIVATION_KEY:
+            st.session_state.authenticated = True
             st.rerun()
-
-# --- 5. MAIN DASHBOARD ---
 else:
-    st.sidebar.title(f"🏢 {st.session_state.school_name}")
-    st.sidebar.write(f"System Date: {date.today()}")
-    
-    menu = st.sidebar.selectbox("Navigate Department", 
-        ["Section A: Student Load", "Section B: Teacher Profile", 
-         "Section C: Efficiency", "Section D: Feedback"])
-    
-    if st.sidebar.button("🚪 Logout & Lock"):
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
-        st.rerun()
+    st.sidebar.title("Navigation")
+    menu = st.sidebar.radio("Go to", ["Section A: Student Load", "Section B: Teacher Profile", "AI Smart Match"])
 
-    st.title(menu)
-    data_key = menu.split(":")[0]
+    # (Previous Section A & B code remains the same as before...)
+    if menu == "Section A: Student Load":
+        st.subheader("Add Class/Student Data")
+        with st.form("a_form", clear_on_submit=True):
+            g = st.selectbox("Grade", [f"Grade {i}" for i in range(1,13)])
+            s = st.text_input("Section")
+            stds = st.number_input("Students", min_value=1)
+            sp = st.number_input("Special Needs", min_value=0)
+            if st.form_submit_button("Add Class"):
+                st.session_state.data_store["Section A"].append({"Grade": g, "Section": s, "Students": stds, "Special Needs": sp})
+                st.rerun()
 
-    # --- DYNAMIC ENTRY FORM ---
-    with st.expander("➕ Add New Entry", expanded=True):
-        with st.form("entry_form", clear_on_submit=True):
-            if data_key == "Section A":
-                c1, c2 = st.columns(2)
-                grade = c1.selectbox("Grade", [f"Grade {i}" for i in range(1, 13)])
-                section = c2.text_input("Section (e.g. A, B, Blue)")
-                c3, c4 = st.columns(2)
-                count = c3.number_input("Student Count", min_value=1, step=1)
-                needs = c4.number_input("Special Needs", min_value=0, step=1)
-                entry = {"Grade": grade, "Section": section, "Students": count, "Special Needs": needs}
+    elif menu == "Section B: Teacher Profile":
+        st.subheader("Add Teacher Expertise")
+        with st.form("b_form", clear_on_submit=True):
+            t = st.text_input("Teacher Name")
+            q = st.selectbox("Degree", ["PhD", "Masters", "Bachelors", "Other"])
+            e = st.number_input("Experience (Years)", min_value=0)
+            if st.form_submit_button("Add Teacher"):
+                st.session_state.data_store["Section B"].append({"Teacher": t, "Degree": q, "Experience": e})
+                st.rerun()
+
+    # --- THE NEW MATCHING PAGE ---
+    elif menu == "AI Smart Match":
+        st.title("🧠 AI Resource Recommendation")
+        st.write("This engine analyzes teacher seniority and class difficulty to suggest the best placement.")
+        
+        recs = get_recommendations()
+        
+        if isinstance(recs, list):
+            for r in recs:
+                st.success(r)
             
-            elif data_key == "Section B":
-                name = st.text_input("Teacher Full Name")
-                qual = st.selectbox("Highest Degree", ["PhD", "Masters", "Bachelors", "Other"])
-                exp = st.number_input("Years of Experience", min_value=0, max_value=50)
-                entry = {"Teacher": name, "Degree": qual, "Experience": exp}
+            # Show Analysis Table
+            st.write("### Data Analysis View")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.write("**Class Load (Difficulty)**")
+                st.write(pd.DataFrame(st.session_state.data_store["Section A"]))
+            with col2:
+                st.write("**Teacher Capability (Strength)**")
+                st.write(pd.DataFrame(st.session_state.data_store["Section B"]))
+        else:
+            st.warning(recs)
 
-            elif data_key == "Section C":
-                task = st.text_input("Task/Department Name")
-                hours = st.number_input("Weekly Hours Required", min_value=1)
-                priority = st.select_slider("Priority Level", ["Low", "Medium", "High"])
-                entry = {"Task": task, "Hours": hours, "Priority": priority}
-
-            else: # Section D
-                source = st.selectbox("Feedback Source", ["Students", "Parents", "Peer"])
-                rating = st.slider("Rating Score", 1, 10, 5)
-                comments = st.text_area("Observations")
-                entry = {"Source": source, "Rating": rating, "Comments": comments}
-
-            if st.form_submit_button("Submit Record"):
-                st.session_state.data_store[data_key].append(entry)
-                st.rerun()
-
-    # --- DATA MANAGEMENT ---
-    current_data = st.session_state.data_store[data_key]
-    if current_data:
-        df = pd.DataFrame(current_data)
-        st.subheader("Departmental Data Log")
-        st.dataframe(df, use_container_width=True)
-        
-        # Calculate Optimization
-        opt_score = calculate_optimization(data_key, current_data)
-        st.metric("Optimization Index", f"{opt_score} / 200")
-
-        c1, c2 = st.columns(2)
-        with c1:
-            row_to_del = st.selectbox("Select Row ID to Delete", range(len(current_data)))
-            if st.button("🗑️ Delete Selected Record"):
-                st.session_state.data_store[data_key].pop(row_to_del)
-                st.rerun()
-        
-        with c2:
-            st.write("### Reporting")
-            if st.button("📄 Generate & Download PDF"):
-                pdf_bytes = generate_pdf(menu, current_data, opt_score)
-                st.download_button("Download Report", pdf_bytes, f"{data_key}_Report.pdf", "application/pdf")
-    else:
-        st.info("No records found in this department.")
-
+    if st.sidebar.button("Logout"):
+        st.session_state.authenticated = False
+        st.rerun()

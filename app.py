@@ -1,4 +1,4 @@
-https://g.co/gemini/share/d522f89168c9 
+
 
 import streamlit as st
 import pandas as pd
@@ -190,3 +190,4 @@ else:
                 st.download_button("Download Report", pdf_bytes, f"{data_key}_Report.pdf", "application/pdf")
     else:
         st.info("No records found in this department.")
+

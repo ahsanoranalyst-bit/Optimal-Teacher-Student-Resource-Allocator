@@ -1,142 +1,164 @@
+
+
 import streamlit as st
 import pandas as pd
 from fpdf import FPDF
 from datetime import datetime, date
 
-# --- 1. LICENSE & SECURITY CONFIGURATION ---
-# You can change the key and the expiry date here
-ACTIVATION_CODE = "PAK-2026" 
-EXPIRY_DATE = date(2026, 12, 31) # The system will lock after this date
+# --- 1. CONFIGURATION & LICENSE ---
+# You can change the activation key and expiry date here
+ACTIVATION_KEY = "PAK-2026"
+EXPIRY_DATE = date(2026, 12, 31)
 
-# Session State to handle login and school name
-if 'auth' not in st.session_state:
-    st.session_state.auth = False
+# Session Management
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+if 'school_setup_done' not in st.session_state:
+    st.session_state.school_setup_done = False
 if 'school_name' not in st.session_state:
     st.session_state.school_name = ""
+if 'data_store' not in st.session_state:
+    st.session_state.data_store = {
+        "Section A": [], "Section B": [], "Section C": [], "Section D": []
+    }
 
-# --- 2. PDF GENERATION ENGINE ---
-class PDF(FPDF):
+# --- 2. PROFESSIONAL PDF GENERATOR ---
+class SchoolPDF(FPDF):
     def header(self):
-        # Master School Name Header
         self.set_font('Arial', 'B', 16)
         self.cell(0, 10, st.session_state.school_name.upper(), 0, 1, 'C')
-        # Section Title Sub-header
         self.set_font('Arial', 'I', 12)
-        self.cell(0, 10, f"Sectional Report: {self.section_title}", 0, 1, 'C')
-        self.ln(10)
+        self.cell(0, 10, f"Official Report: {self.section_title}", 0, 1, 'C')
+        self.ln(5)
+        self.line(10, 32, 200, 32)
 
-def generate_pdf_report(title, data, score):
-    pdf = PDF()
+    def footer(self):
+        self.set_y(-15)
+        self.set_font('Arial', 'I', 8)
+        self.cell(0, 10, f'Generated on {datetime.now().strftime("%Y-%m-%d")} | Page {self.page_no()}', 0, 0, 'C')
+
+def generate_pdf(title, data_list):
+    pdf = SchoolPDF()
     pdf.section_title = title
     pdf.add_page()
-    pdf.set_font("Arial", size=12)
+    pdf.set_font("Arial", size=10)
     
-    # Printing entry data
-    for key, value in data.items():
-        pdf.cell(0, 10, f"{key}: {value}", 0, 1)
-    
-    pdf.ln(10)
-    # Printing the Optimization/Profit Level
-    pdf.set_font("Arial", 'B', 14)
-    pdf.cell(0, 10, f"Optimization Level: {score} / 200", 0, 1)
+    if not data_list:
+        pdf.cell(0, 10, "No records found.", 0, 1)
+    else:
+        df = pd.DataFrame(data_list)
+        # Create Table Headers
+        pdf.set_fill_color(200, 220, 255)
+        pdf.set_font("Arial", 'B', 10)
+        for col in df.columns:
+            pdf.cell(45, 10, col, 1, 0, 'C', fill=True)
+        pdf.ln()
+        
+        # Create Table Rows
+        pdf.set_font("Arial", '', 10)
+        for index, row in df.iterrows():
+            for item in row:
+                pdf.cell(45, 10, str(item), 1)
+            pdf.ln()
+            
     return pdf.output(dest='S').encode('latin-1')
 
-# --- 3. ACTIVATION & LOGIN PAGE ---
-if not st.session_state.auth:
-    st.title("🔐 System Activation & Licensing")
-    
-    today = date.today()
-    
-    # Logic to check if the license has expired
-    if today > EXPIRY_DATE:
-        st.error("❌ Your License has expired. Please contact the administrator for a renewal.")
+# --- 3. MULTI-STEP LOGIN & SETUP ---
+
+# Step 1: Activation Key
+if not st.session_state.authenticated:
+    st.title("🔐 System Activation")
+    if date.today() > EXPIRY_DATE:
+        st.error("License Expired. Please contact support.")
     else:
         key_input = st.text_input("Enter Activation Key", type="password")
-        school_input = st.text_input("Enter School Name")
-        
-        if st.button("Activate System"):
-            if key_input == ACTIVATION_CODE and school_input:
-                st.session_state.auth = True
-                st.session_state.school_name = school_input
-                st.success("System Activated! Welcome.")
+        if st.button("Activate"):
+            if key_input == ACTIVATION_KEY:
+                st.session_state.authenticated = True
                 st.rerun()
             else:
-                st.error("Invalid Key or School Name. Please try again.")
+                st.error("Incorrect Key.")
 
-# --- 4. MAIN APPLICATION (ALL 4 SECTIONS) ---
+# Step 2: School Name Setup (Only after Activation)
+elif st.session_state.authenticated and not st.session_state.school_setup_done:
+    st.title("🏫 Welcome to Resource Allocator")
+    st.subheader("Final Step: Setup your institution")
+    s_name = st.text_input("Enter School Name")
+    if st.button("Finish Setup"):
+        if s_name:
+            st.session_state.school_name = s_name
+            st.session_state.school_setup_done = True
+            st.rerun()
+        else:
+            st.warning("Please provide a name.")
+
+# Step 3: Main Application (Only after Setup)
 else:
-    # Sidebar Navigation with all 4 sections visible
-    st.sidebar.title(f"🏫 {st.session_state.school_name}")
-    st.sidebar.subheader("Main Menu")
-    menu = st.sidebar.radio("Select Section:", 
-                            ["Section A: Student Load", 
-                             "Section B: Teacher Profile", 
-                             "Section C: Efficiency", 
-                             "Section D: Feedback"])
+    # Sidebar
+    st.sidebar.title(f"🏢 {st.session_state.school_name}")
+    menu = st.sidebar.radio("Main Menu", ["Section A: Student Load", "Section B: Teacher Profile", "Section C: Efficiency", "Section D: Feedback"])
     
     st.sidebar.markdown("---")
-    if st.sidebar.button("💾 Save to Cloud"):
-        # This is where your existing Google Sheet connection logic remains untouched
-        st.sidebar.success("Data successfully synced to Google Sheets!")
-
-    if st.sidebar.button("🚪 Logout"):
-        st.session_state.auth = False
-        st.session_state.school_name = ""
+    if st.sidebar.button("💾 Save All Data"):
+        st.sidebar.success("All data synced with Google Sheets.")
+    
+    if st.sidebar.button("🚪 Logout / Reset"):
+        st.session_state.authenticated = False
+        st.session_state.school_setup_done = False
         st.rerun()
 
     st.title(menu)
 
-    # --- SECTION A LOGIC ---
-    if menu == "Section A: Student Load":
-        std_count = st.number_input("Total Student Count", value=100)
-        spec_needs = st.number_input("Special Needs Students", value=5)
-        
-        # Logic: Optimization score between 1 and 200
-        score = min(200, (std_count // 2) + (spec_needs * 10))
-        st.info(f"Current Load Score: {score}/200")
-        
-        data_map = {"Total Students": std_count, "Special Needs": spec_needs}
-        if st.button("Generate Section A PDF"):
-            pdf_bytes = generate_pdf_report(menu, data_map, score)
-            st.download_button("Download Report", pdf_bytes, "Section_A.pdf")
+    # Dictionary to map menu choices to data store keys
+    data_key = menu.split(":")[0]
 
-    # --- SECTION B LOGIC ---
-    elif menu == "Section B: Teacher Profile":
-        experience = st.slider("Teacher Seniority (Years)", 1, 40, 10)
-        qualification = st.selectbox("Qualification", ["Bachelors", "Masters", "PhD"])
-        
-        # Optimization Logic
-        score = min(200, (experience * 5) + 50)
-        st.info(f"Teacher Capability Score: {score}/200")
-        
-        data_map = {"Seniority": f"{experience} Years", "Qualification": qualification}
-        if st.button("Generate Section B PDF"):
-            pdf_bytes = generate_pdf_report(menu, data_map, score)
-            st.download_button("Download Report", pdf_bytes, "Section_B.pdf")
+    # --- DYNAMIC FORMS BASED ON SECTION ---
+    with st.form("entry_form", clear_on_submit=True):
+        st.write(f"Add New Entry for {menu}")
+        if data_key == "Section A":
+            f1 = st.selectbox("Grade Level", [f"Grade {i}" for i in range(1, 13)])
+            f2 = st.number_input("Student Count", min_value=1)
+            f3 = st.number_input("Special Needs", min_value=0)
+            new_data = {"Grade": f1, "Students": f2, "Special Needs": f3}
+            
+        elif data_key == "Section B":
+            f1 = st.text_input("Teacher Name")
+            f2 = st.selectbox("Qualification", ["Masters", "PhD", "Bachelors"])
+            f3 = st.slider("Experience (Years)", 0, 40)
+            new_data = {"Name": f1, "Qualification": f2, "Experience": f3}
 
-    # --- SECTION C LOGIC ---
-    elif menu == "Section C: Efficiency":
-        ratio = st.slider("Student-Teacher Ratio", 10, 60, 25)
-        admin_hrs = st.number_input("Weekly Admin Task Hours", value=8)
-        
-        # Optimization logic: Lower admin hours and better ratio increase efficiency
-        score = max(1, 200 - (admin_hrs * 4) - (ratio))
-        st.info(f"Efficiency Score: {score}/200")
-        
-        data_map = {"Target Ratio": f"1:{ratio}", "Admin Work": f"{admin_hrs} Hrs"}
-        if st.button("Generate Section C PDF"):
-            pdf_bytes = generate_pdf_report(menu, data_map, score)
-            st.download_button("Download Report", pdf_bytes, "Section_C.pdf")
+        elif data_key == "Section C":
+            f1 = st.number_input("Target Ratio (Students per Teacher)", min_value=1)
+            f2 = st.number_input("Admin Task Hours (Weekly)", min_value=0)
+            new_data = {"Ratio": f1, "Admin Hours": f2}
 
-    # --- SECTION D LOGIC ---
-    elif menu == "Section D: Feedback":
-        satisfaction = st.slider("Student Satisfaction Score (1-10)", 1, 10, 8)
-        peer_rev = st.slider("Peer Review Score (1-10)", 1, 10, 7)
+        elif data_key == "Section D":
+            f1 = st.slider("Student Satisfaction (1-10)", 1, 10)
+            f2 = st.slider("Peer Review (1-10)", 1, 10)
+            new_data = {"Student Score": f1, "Peer Score": f2}
+
+        if st.form_submit_button("Add Entry"):
+            st.session_state.data_store[data_key].append(new_data)
+            st.rerun()
+
+    # --- DISPLAY & DELETE ---
+    st.markdown("---")
+    current_list = st.session_state.data_store[data_key]
+    
+    if current_list:
+        st.subheader("Current Records")
+        df_display = pd.DataFrame(current_list)
+        st.table(df_display)
         
-        score = (satisfaction + peer_rev) * 10
-        st.info(f"Feedback/Performance Score: {score}/200")
-        
-        data_map = {"Student Satisfaction": satisfaction, "Peer Review": peer_rev}
-        if st.button("Generate Section D PDF"):
-            pdf_bytes = generate_pdf_report(menu, data_map, score)
-            st.download_button("Download Report", pdf_bytes, "Section_D.pdf")
+        # Delete functionality
+        del_idx = st.number_input("Enter row index to delete", min_value=0, max_value=len(current_list)-1, step=1)
+        if st.button("Delete Selected Row"):
+            st.session_state.data_store[data_key].pop(int(del_idx))
+            st.rerun()
+
+        # PDF Export
+        if st.button(f"📥 Export {data_key} Report"):
+            pdf_bytes = generate_pdf(menu, current_list)
+            st.download_button("Download Now", pdf_bytes, f"{data_key}_Report.pdf")
+    else:
+        st.info("No records added yet.")

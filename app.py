@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
+# 1. Configuration
 st.set_page_config(page_title="Teacher-Student Resource Allocator", layout="wide")
 
 st.title("⚖️ Teacher-Student Resource Allocator")
@@ -24,10 +25,15 @@ with tab1:
     st.header("Resource Allocation Logic")
     
     # Calculation Logic
+    # Basic math: total students / target ratio
     required_teachers = int(np.ceil(total_students / target_ratio))
-    # Weighted adjustment for Special Needs (Section A)
-    # Special needs students require ~2x resources
-    adjusted_load = total_students + (total_students * (special_needs_pct / 100))
+    
+    # Weighted adjustment: Special needs students are treated as 2x load
+    # adjusted_load = (General Students) + (Special Needs Students * 2)
+    sn_count = total_students * (special_needs_pct / 100)
+    gen_count = total_students - sn_count
+    adjusted_load = gen_count + (sn_count * 2)
+    
     optimized_staff_count = int(np.ceil(adjusted_load / target_ratio))
 
     c1, c2, c3 = st.columns(3)
@@ -37,17 +43,17 @@ with tab1:
 
     st.info(f"**Efficiency Note:** Based on {admin_hours} admin hours/week, effective teaching time is {40 - admin_hours} hours per staff member.")
 
-    # Visualization of Section A vs Section C
+    # Visualization
     allocation_df = pd.DataFrame({
         "Category": ["General Education", "Special Education Support"],
-        "Student Count": [total_students * (1 - special_needs_pct/100), total_students * (special_needs_pct/100)]
+        "Student Count": [gen_count, sn_count]
     })
     st.bar_chart(allocation_df.set_index("Category"))
 
 with tab2:
     st.header("Section B & D: Teacher Merit & Feedback")
     
-    # Mock Data for Teachers (Section B & D)
+    # Mock Data
     teacher_data = pd.DataFrame({
         "Teacher Name": ["Mx. Alpha", "Mx. Beta", "Mx. Gamma", "Mx. Delta"],
         "Seniority (Years)": [12, 4, 8, 15],
@@ -59,8 +65,12 @@ with tab2:
     st.subheader("Staff Performance Matrix")
     st.dataframe(teacher_data, use_container_width=True)
     
-    # Allocation Strategy based on Merit
+    # Recommendation Logic
     st.subheader("Smart Assignment Recommendation")
     high_performers = teacher_data[teacher_data["Performance Score (1-10)"] > 9]
-
-    st.write(f"Recommended for High-Load/Special Needs Classes: {', '.join(high_performers['Teacher Name'])}")
+    
+    if not high_performers.empty:
+        names = ", ".join(high_performers['Teacher Name'])
+        st.success(f"**Recommended for High-Load/Special Needs:** {names}")
+    else:
+        st.warning("No teachers currently meet the high-performance threshold for specialized assignment.")

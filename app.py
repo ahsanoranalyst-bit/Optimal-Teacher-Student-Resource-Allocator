@@ -1,172 +1,184 @@
-
-
 import streamlit as st
 import pandas as pd
 from fpdf import FPDF
 from datetime import datetime, date
+import io
 
-# --- 1. CONFIGURATION ---
+# --- 1. SETTINGS & LICENSE ---
 ACTIVATION_KEY = "PAK-2026"
 EXPIRY_DATE = date(2026, 12, 31)
 
+# Initialize Session States
 if 'auth' not in st.session_state: st.session_state.auth = False
 if 'setup' not in st.session_state: st.session_state.setup = False
 if 'school_name' not in st.session_state: st.session_state.school_name = ""
 if 'data_store' not in st.session_state:
     st.session_state.data_store = {
-        "Section A": [], "Section B": [], "Section C": [], "Section D": [], "Demands": []
+        "Classes": [], "Teachers": [], "Efficiency": [], "Feedback": [], "Demands": []
     }
 
-# --- 2. SMART MATCHING & DEMAND LOGIC ---
-def get_smart_analysis():
-    classes = st.session_state.data_store["Section A"]
-    teachers = st.session_state.data_store["Section B"]
-    demands = st.session_state.data_store["Demands"]
-    
-    if not classes or not teachers:
-        return "Insufficient data for AI Matching. Please fill Section A and B."
-
-    analysis = []
-    # logic for manual demands
-    for d in demands:
-        analysis.append(f"📌 **Manual Demand:** {d['Requested By']} wants **{d['Teacher']}** for **{d['Class']}**.")
-
-    # basic AI matching logic
-    c_df = pd.DataFrame(classes)
-    t_df = pd.DataFrame(teachers)
-    
-    # Matching highest experience with highest student load
-    c_sorted = c_df.sort_values(by='Students', ascending=False)
-    t_sorted = t_df.sort_values(by='Experience', ascending=False)
-    
-    for i in range(min(len(c_sorted), len(t_sorted))):
-        analysis.append(f"🤖 **AI Suggestion:** Assign **{t_sorted.iloc[i]['Teacher']}** to **{c_sorted.iloc[i]['Grade']} - {c_sorted.iloc[i]['Section']}** (Load Based Match)")
-    
-    return analysis
-
-# --- 3. PDF GENERATOR ---
-class SchoolPDF(FPDF):
+# --- 2. MULTI-PURPOSE PDF ENGINE ---
+class MasterPDF(FPDF):
     def header(self):
         self.set_font('Arial', 'B', 16)
         self.cell(0, 10, st.session_state.school_name.upper(), 0, 1, 'C')
         self.set_font('Arial', 'I', 11)
-        self.cell(0, 10, f"Sectional Report: {self.section_title}", 0, 1, 'C')
+        self.cell(0, 10, f"Official Report: {self.report_title}", 0, 1, 'C')
         self.ln(10)
+        self.line(10, 32, 200, 32)
 
-def generate_pdf(title, data_list):
-    pdf = SchoolPDF()
-    pdf.section_title = title
+    def footer(self):
+        self.set_y(-15)
+        self.set_font('Arial', 'I', 8)
+        self.cell(0, 10, f'Generated on {datetime.now().strftime("%Y-%m-%d")} | Page {self.page_no()}', 0, 0, 'C')
+
+def generate_report(title, data_list):
+    pdf = MasterPDF()
+    pdf.report_title = title
     pdf.add_page()
     pdf.set_font("Arial", size=10)
-    if data_list:
+    
+    if not data_list:
+        pdf.cell(0, 10, "No data records available for this section.", 0, 1)
+    else:
         df = pd.DataFrame(data_list)
+        # Create Headers
+        pdf.set_fill_color(230, 230, 230)
+        pdf.set_font("Arial", 'B', 10)
         col_width = 190 / len(df.columns)
-        for col in df.columns: pdf.cell(col_width, 10, str(col), 1, 0, 'C')
+        for col in df.columns:
+            pdf.cell(col_width, 10, str(col), 1, 0, 'C', fill=True)
         pdf.ln()
+        
+        # Create Rows
+        pdf.set_font("Arial", '', 9)
         for _, row in df.iterrows():
-            for item in row: pdf.cell(col_width, 9, str(item), 1)
+            for item in row:
+                pdf.cell(col_width, 10, str(item), 1)
             pdf.ln()
+    
     return pdf.output(dest='S').encode('latin-1')
 
-# --- 4. AUTHENTICATION & SETUP ---
+# --- 3. ACCESS CONTROL FLOW ---
 if not st.session_state.auth:
-    st.title("🔐 License Activation")
-    if date.today() > EXPIRY_DATE: st.error("License Expired.")
-    else:
-        k = st.text_input("Activation Key", type="password")
-        if st.button("Activate"):
-            if k == ACTIVATION_KEY: st.session_state.auth = True; st.rerun()
-            else: st.error("Invalid Key")
+    st.title("🔐 System Activation")
+    key = st.text_input("Enter License Key", type="password")
+    if st.button("Activate"):
+        if key == ACTIVATION_KEY:
+            st.session_state.auth = True
+            st.rerun()
+        else: st.error("Invalid License Key")
 
 elif not st.session_state.setup:
     st.title("🏫 Institution Setup")
-    sn = st.text_input("Enter School Name")
-    if st.button("Start Dashboard"):
-        if sn: st.session_state.school_name = sn; st.session_state.setup = True; st.rerun()
+    sn = st.text_input("Enter School/Institution Name")
+    if st.button("Initialize Dashboard"):
+        if sn:
+            st.session_state.school_name = sn
+            st.session_state.setup = True
+            st.rerun()
 
-# --- 5. MAIN DASHBOARD ---
+# --- 4. MAIN DASHBOARD ---
 else:
     st.sidebar.title(f"🏢 {st.session_state.school_name}")
-    menu = st.sidebar.selectbox("Navigate", 
+    menu = st.sidebar.selectbox("Main Navigation", 
         ["Section A: Student Load", "Section B: Teacher Profile", 
          "Section C: Efficiency", "Section D: Feedback", 
-         "Teacher Demands", "Smart Analysis"])
+         "Teacher Demands", "Smart Analysis Report"])
     
     if st.sidebar.button("Logout"):
-        st.session_state.auth = False; st.session_state.setup = False; st.rerun()
+        st.session_state.auth = False; st.session_state.setup = False
+        st.rerun()
 
     st.title(menu)
+
+    # --- SECTION LOGIC (A, B, C, D, Demands) ---
     
-    # --- SECTION A: STUDENT LOAD ---
+    # SECTION A: CLASSES
     if menu == "Section A: Student Load":
-        with st.form("a"):
+        with st.form("a_form", clear_on_submit=True):
             g = st.selectbox("Grade", [f"Grade {i}" for i in range(1,13)])
-            s = st.text_input("Section Name (e.g. A, B, Blue)")
-            stds = st.number_input("Total Students", min_value=1)
-            sn = st.number_input("Special Needs", min_value=0)
-            if st.form_submit_button("Add Record"):
-                st.session_state.data_store["Section A"].append({"Grade": g, "Section": s, "Students": stds, "Special Needs": sn})
+            s = st.text_input("Section Name (e.g., A, B, Blue)")
+            stds = st.number_input("Students Count", min_value=1)
+            if st.form_submit_button("Save Class"):
+                st.session_state.data_store["Classes"].append({"Grade": g, "Section": s, "Students": stds})
                 st.rerun()
+        data_to_show = st.session_state.data_store["Classes"]
 
-    # --- SECTION B: TEACHER PROFILE ---
+    # SECTION B: TEACHERS
     elif menu == "Section B: Teacher Profile":
-        with st.form("b"):
+        with st.form("b_form", clear_on_submit=True):
             t = st.text_input("Teacher Name")
-            q = st.selectbox("Qualification", ["PhD", "Masters", "Bachelors", "Other"])
-            e = st.number_input("Experience (Years)", min_value=0)
+            e = st.number_input("Years of Experience", min_value=0)
             if st.form_submit_button("Add Teacher"):
-                st.session_state.data_store["Section B"].append({"Teacher": t, "Qualification": q, "Experience": e})
+                st.session_state.data_store["Teachers"].append({"Teacher": t, "Experience": e})
                 st.rerun()
+        data_to_show = st.session_state.data_store["Teachers"]
 
-    # --- SECTION C: EFFICIENCY ---
+    # SECTION C: EFFICIENCY (Linking Class + Teacher)
     elif menu == "Section C: Efficiency":
-        with st.form("c"):
-            tr = st.number_input("Target Teacher-Student Ratio", min_value=1)
-            ah = st.number_input("Admin Hours per Week", min_value=0)
-            if st.form_submit_button("Add Efficiency Data"):
-                st.session_state.data_store["Section C"].append({"Target Ratio": tr, "Admin Hours": ah})
-                st.rerun()
+        if not st.session_state.data_store["Teachers"]: st.warning("Add Teachers in Section B first.")
+        else:
+            with st.form("c_form", clear_on_submit=True):
+                t_list = [t['Teacher'] for t in st.session_state.data_store["Teachers"]]
+                c_list = [f"{c['Grade']}-{c['Section']}" for c in st.session_state.data_store["Classes"]]
+                sel_t = st.selectbox("Select Teacher", t_list)
+                sel_c = st.selectbox("Assign to Class", c_list)
+                p = st.number_input("Periods per Week", min_value=1)
+                adm = st.number_input("Admin Hours (per week)", value=1)
+                if st.form_submit_button("Link Schedule"):
+                    st.session_state.data_store["Efficiency"].append({"Teacher": sel_t, "Class": sel_c, "Periods": p, "Admin": adm})
+                    st.rerun()
+        data_to_show = st.session_state.data_store["Efficiency"]
 
-    # --- SECTION D: FEEDBACK ---
-    elif menu == "Section D: Feedback":
-        with st.form("d"):
-            source = st.selectbox("Source", ["Student", "Parent", "Peer"])
-            rating = st.slider("Rating Score", 1, 10, 5)
-            comment = st.text_area("Feedback Comments")
-            if st.form_submit_button("Save Feedback"):
-                st.session_state.data_store["Section D"].append({"Source": source, "Rating": rating, "Comment": comment})
-                st.rerun()
-
-    # --- TEACHER DEMANDS (NEW FEATURE) ---
+    # TEACHER DEMANDS
     elif menu == "Teacher Demands":
-        st.subheader("Place a Request for a Specific Teacher")
-        with st.form("demand"):
-            req_by = st.text_input("Requested By (e.g. Principal, HOD)")
+        with st.form("demand_form", clear_on_submit=True):
+            req = st.text_input("Requested By")
             t_req = st.text_input("Teacher Requested")
-            c_req = st.text_input("Class/Section for this Teacher")
+            target = st.text_input("Target Section")
             if st.form_submit_button("Submit Demand"):
-                st.session_state.data_store["Demands"].append({"Requested By": req_by, "Teacher": t_req, "Class": c_req})
+                st.session_state.data_store["Demands"].append({"By": req, "Teacher": t_req, "Target": target})
+                st.rerun()
+        data_to_show = st.session_state.data_store["Demands"]
+
+    # SMART ANALYSIS (AI Logic + Full PDF)
+    elif menu == "Smart Analysis Report":
+        st.subheader("Automated Resource Optimization Index")
+        analysis_data = []
+        for eff in st.session_state.data_store["Efficiency"]:
+            # Basic Score Logic (1-200)
+            score = min(200, (eff['Periods'] * 4) + (eff['Admin'] * 10))
+            analysis_data.append({"Teacher": eff['Teacher'], "Class": eff['Class'], "Workload Score": f"{score}/200", "Status": "Optimized" if score < 150 else "Overloaded"})
+        
+        st.table(analysis_data)
+        data_to_show = analysis_data
+
+    # SECTION D: FEEDBACK (Simplified for this version)
+    else:
+        with st.form("d_form"):
+            t_f = st.text_input("Teacher Name")
+            f_b = st.slider("Rating", 1, 10)
+            if st.form_submit_button("Save Feedback"):
+                st.session_state.data_store["Feedback"].append({"Teacher": t_f, "Rating": f_b})
+        data_to_show = st.session_state.data_store["Feedback"]
+
+    # --- SHARED VIEW & PDF DOWNLOAD ---
+    if data_to_show:
+        st.markdown("---")
+        st.dataframe(pd.DataFrame(data_to_show), use_container_width=True)
+        
+        # Row deletion logic
+        idx = st.number_input("Enter Row ID to Delete", 0, len(data_to_show)-1, 0)
+        if st.button("Delete Record"):
+            # Logic to find correct list and pop
+            key_map = {"Section A": "Classes", "Section B": "Teachers", "Section C": "Efficiency", "Teacher Demands": "Demands", "Section D": "Feedback"}
+            key = key_map.get(menu.split(":")[0], menu)
+            if key in st.session_state.data_store:
+                st.session_state.data_store[key].pop(idx)
                 st.rerun()
 
-    # --- SMART ANALYSIS PAGE ---
-    elif menu == "Smart Analysis":
-        st.subheader("AI and Demand-Based Recommendations")
-        results = get_smart_analysis()
-        if isinstance(results, list):
-            for res in results: st.info(res)
-        else: st.warning(results)
-
-    # --- DATA VIEW & PDF ---
-    current_key = menu.split(":")[0] if ":" in menu else menu
-    if current_key in st.session_state.data_store:
-        data = st.session_state.data_store[current_key]
-        if data:
-            df = pd.DataFrame(data)
-            st.dataframe(df, use_container_width=True)
-            if st.button("Download PDF Report"):
-                pdf_bytes = generate_pdf(menu, data)
-                st.download_button("Click to Download", pdf_bytes, f"{current_key}.pdf")
-            
-            idx = st.number_input("Delete Row Index", 0, len(data)-1, 0)
-            if st.button("Delete Selected Row"):
-                st.session_state.data_store[current_key].pop(idx); st.rerun()
+        # PDF Export for the current section
+        if st.button(f"📥 Export {menu} as PDF"):
+            pdf_bytes = generate_report(menu, data_to_show)
+            st.download_button("Download Now", pdf_bytes, f"{menu.replace(':', '')}.pdf")

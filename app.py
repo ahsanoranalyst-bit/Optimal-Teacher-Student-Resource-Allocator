@@ -1,67 +1,94 @@
-
-﻿import streamlit as st
+import streamlit as st
 import pandas as pd
 import numpy as np
 
-st.set_page_config(page_title="Teacher-Student Resource Allocator", layout="wide")
+class ResourceAllocator:
+    def __init__(self, total_students, sn_pct, target_ratio, admin_hours):
+        self.total_students = total_students
+        self.sn_pct = sn_pct
+        self.target_ratio = target_ratio
+        self.admin_hours = admin_hours
 
-st.title("⚖️ Teacher-Student Resource Allocator")
-st.markdown("Optimize staff distribution based on student needs, teacher seniority, and performance metrics.")
+    def calculate_load(self):
+        """Calculates the weighted student load based on Section A."""
+        sn_count = self.total_students * (self.sn_pct / 100)
+        gen_count = self.total_students - sn_count
+        # Special needs students weighted at 2.0x resource requirement
+        weighted_load = gen_count + (sn_count * 2.0)
+        return gen_count, sn_count, weighted_load
 
-# --- SIDEBAR: PARAMETERS ---
+    def get_staffing_needs(self, weighted_load):
+        """Calculates staffing requirements based on Section C."""
+        standard_need = int(np.ceil(self.total_students / self.target_ratio))
+        optimized_need = int(np.ceil(weighted_load / self.target_ratio))
+        return standard_need, optimized_need
+
+    @staticmethod
+    def rank_teachers(df):
+        """Processes Section B & D to find the best resource fits."""
+        # Creating a Composite Score: 40% Performance, 30% Satisfaction, 20% Peer, 10% Seniority
+        df['Composite Score'] = (
+            (df['Performance'] * 4) + 
+            (df['Satisfaction'] / 10 * 3) + 
+            (df['Peer Review'] * 2) +
+            (df['Seniority'] * 0.1)
+        ) / 10
+        return df.sort_values(by='Composite Score', ascending=False)
+
+# --- STREAMLIT UI SETUP ---
+st.set_page_config(page_title="Optimal Resource Allocator", layout="wide")
+st.title("⚖️ Optimal Teacher-Student Resource Allocator")
+
+# --- SIDEBAR (Sections A & C) ---
 with st.sidebar:
     st.header("Section A: Student Load")
-    total_students = st.number_input("Total Student Population", 100, 5000, 500)
-    special_needs_pct = st.slider("Special Needs Students (%)", 0, 50, 10)
-   
-    st.header("Section C: Efficiency Targets")
-    target_ratio = st.slider("Target Student-Teacher Ratio", 10, 40, 25)
-    admin_hours = st.number_input("Weekly Admin Hours per Teacher", 0, 20, 5)
+    total_students = st.number_input("Total Student Population", 100, 5000, 800)
+    sn_pct = st.slider("Special Needs Students (%)", 0, 50, 15)
+    
+    st.header("Section C: Efficiency")
+    target_ratio = st.slider("Target Ratio (Students per Teacher)", 10, 40, 22)
+    admin_hours = st.number_input("Weekly Admin Hours", 0, 20, 4)
 
-# --- APP LAYOUT ---
-tab1, tab2 = st.tabs(["📊 Allocation Engine", "📋 Teacher Profiles & Feedback"])
+# --- DATA INITIALIZATION (Sections B & D) ---
+# In a real app, this would be a file upload (CSV/Excel)
+teacher_data = pd.DataFrame({
+    "Teacher Name": ["Alpha", "Beta", "Gamma", "Delta", "Epsilon"],
+    "Qualification": ["Masters", "Bachelors", "PhD", "Masters", "Bachelors"],
+    "Seniority": [10, 3, 15, 7, 2],
+    "Performance": [9.0, 7.5, 9.5, 8.2, 6.8],
+    "Satisfaction": [92, 85, 96, 88, 79],
+    "Peer Review": [4.8, 3.2, 4.9, 4.1, 3.0]
+})
 
-with tab1:
-    st.header("Resource Allocation Logic")
-   
-    # Calculation Logic
-    required_teachers = int(np.ceil(total_students / target_ratio))
-    # Weighted adjustment for Special Needs (Section A)
-    # Special needs students require ~2x resources
-    adjusted_load = total_students + (total_students * (special_needs_pct / 100))
-    optimized_staff_count = int(np.ceil(adjusted_load / target_ratio))
+# --- EXECUTION ---
+allocator = ResourceAllocator(total_students, sn_pct, target_ratio, admin_hours)
+gen, sn, weighted = allocator.calculate_load()
+std_need, opt_need = allocator.get_staffing_needs(weighted)
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Standard Staff Needed", required_teachers)
-    c2.metric("Optimized Staff (SN Adjusted)", optimized_staff_count)
-    c3.metric("Additional Hiring Need", optimized_staff_count - required_teachers)
+# --- DISPLAY ---
+t1, t2 = st.tabs(["📈 Allocation Logic", "🧑‍🏫 Teacher Merit Analysis"])
 
-    st.info(f"**Efficiency Note:** Based on {admin_hours} admin hours/week, effective teaching time is {40 - admin_hours} hours per staff member.")
+with t1:
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Raw Student Count", int(total_students))
+    col2.metric("Weighted Load", f"{weighted:.1f}", help="Adjusted for Special Needs intensity")
+    col3.metric("Required Staff", opt_need, delta=int(opt_need - std_need))
 
-    # Visualization of Section A vs Section C
-    allocation_df = pd.DataFrame({
-        "Category": ["General Education", "Special Education Support"],
-        "Student Count": [total_students * (1 - special_needs_pct/100), total_students * (special_needs_pct/100)]
+    st.subheader("Resource Distribution")
+    chart_data = pd.DataFrame({
+        "Type": ["General Ed", "Special Ed Support"],
+        "Students": [gen, sn]
     })
-    st.bar_chart(allocation_df.set_index("Category"))
+    st.bar_chart(chart_data.set_index("Type"))
+    
+    eff_time = 40 - admin_hours
+    st.info(f"💡 At {admin_hours} admin hours/week, each teacher provides {eff_time} hours of direct instruction.")
 
-with tab2:
-    st.header("Section B & D: Teacher Merit & Feedback")
-   
-    # Mock Data for Teachers (Section B & D)
-    teacher_data = pd.DataFrame({
-        "Teacher Name": ["Mx. Alpha", "Mx. Beta", "Mx. Gamma", "Mx. Delta"],
-        "Seniority (Years)": [12, 4, 8, 15],
-        "Performance Score (1-10)": [9.2, 7.5, 8.8, 9.5],
-        "Student Satisfaction (%)": [95, 82, 89, 91],
-        "Peer Review Score": [4.8, 3.5, 4.2, 4.9]
-    })
-   
-    st.subheader("Staff Performance Matrix")
-    st.dataframe(teacher_data, use_container_width=True)
-   
-    # Allocation Strategy based on Merit
-    st.subheader("Smart Assignment Recommendation")
-    high_performers = teacher_data[teacher_data["Performance Score (1-10)"] > 9]
-
-    st.write(f"Recommended for High-Load/Special Needs Classes: {', '.join(high_performers['Teacher Name'])}")
+with t2:
+    st.header("Teacher Ranking (Section B & D Combined)")
+    ranked_df = allocator.rank_teachers(teacher_data)
+    
+    st.dataframe(ranked_df.style.highlight_max(subset=['Composite Score'], color='#D4EDDA'), use_container_width=True)
+    
+    top_tier = ranked_df.iloc[0]['Teacher Name']
+    st.success(f"**Primary Recommendation:** {top_tier} is the optimal lead for High-Impact classes based on composite metrics.")

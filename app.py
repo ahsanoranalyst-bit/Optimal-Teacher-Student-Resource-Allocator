@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import plotly.graph_objects as go
 
 # --- APP CONFIGURATION ---
 st.set_page_config(page_title="Optimal Resource Allocator", layout="wide")
@@ -38,17 +37,17 @@ st.write("---")
 # SECTION B: TEACHER PROFILE (INTERNAL PERFORMANCE)
 # =========================================================
 st.header("🧑‍🏫 Section B: Teacher Profile & Metrics")
-st.markdown("Edit teacher seniority and internal performance ratings below.")
+st.markdown("Enter core staff qualifications and historical performance data.")
 with st.container():
-    # Base internal data
-    b_data = pd.DataFrame({
+    # Base Data
+    initial_b_data = pd.DataFrame({
         "Teacher Name": ["Aris", "Bo", "Cy", "Di", "El"],
         "Qualification": ["PhD", "Masters", "Masters", "Bachelors", "Masters"],
         "Seniority (Years)": [15, 8, 5, 2, 10],
         "Performance Metric": [9.6, 8.2, 7.5, 9.3, 8.7]
     })
-    # Allowing dynamic editing of the internal profile
-    edited_b_data = st.data_editor(b_data, use_container_width=True, num_rows="dynamic", key="editor_b")
+    # Editable Dataframe
+    edited_b_df = st.data_editor(initial_b_data, num_rows="dynamic", use_container_width=True, key="prof_editor")
 
 st.write("---")
 
@@ -63,10 +62,9 @@ with st.container():
     with col_c2:
         admin_hours = st.slider("Weekly Administrative Burden (Hours)", 0, 25, 6)
 
-    # Calculation: Efficiency determines how many 'effective' teachers you actually have
+    # Calculation logic
     efficiency = (40 - admin_hours) / 40
-    opt_staff_req = np.ceil((weighted_load / target_ratio) / efficiency)
-    current_staff_count = len(edited_b_data)
+    opt_staff = np.ceil((weighted_load / target_ratio) / efficiency)
 
 st.write("---")
 
@@ -74,15 +72,20 @@ st.write("---")
 # SECTION D: FEEDBACK (EXTERNAL QUALITY)
 # =========================================================
 st.header("💬 Section D: Feedback & Satisfaction Scores")
-st.markdown("Input qualitative data from student surveys and peer reviews.")
+st.markdown("Input data from Student Surveys and Peer Evaluations.")
 with st.container():
-    # We map Section D to the names currently in Section B to ensure consistency
-    d_data_template = pd.DataFrame({
-        "Teacher Name": edited_b_data["Teacher Name"],
-        "Student Satisfaction %": [98, 85, 80, 95, 88][:len(edited_b_data)] if len(edited_b_data) <= 5 else [85]*len(edited_b_data),
-        "Peer Review (1-5)": [4.9, 4.1, 3.5, 4.7, 4.2][:len(edited_b_data)] if len(edited_b_data) <= 5 else [4.0]*len(edited_b_data)
+    # Sync names from Section B to ensure data integrity
+    names_from_b = edited_b_df["Teacher Name"].tolist()
+    
+    # Pre-fill feedback data based on current staff list
+    initial_d_data = pd.DataFrame({
+        "Teacher Name": names_from_b,
+        "Student Satisfaction %": [90] * len(names_from_b),
+        "Peer Review (1-5)": [4.0] * len(names_from_b)
     })
-    edited_d_data = st.data_editor(d_data_template, use_container_width=True, key="editor_d")
+    
+    # Map old values if names exist to prevent data loss on every edit
+    feedback_df = st.data_editor(initial_d_data, use_container_width=True, key="feedback_editor")
 
 st.write("---")
 
@@ -91,43 +94,34 @@ st.write("---")
 # =========================================================
 st.header("🚀 Strategic Staffing Optimization")
 
-# Merge Section B (Internal) and Section D (External)
-combined_df = pd.merge(edited_b_data, edited_d_data, on="Teacher Name")
+# 1. Merge Internal (B) and External (D) Data
+combined_stats = pd.merge(edited_b_df, feedback_df, on="Teacher Name")
 
-# Optimization Logic: Weighted Capability Index (0-10 Scale)
-combined_df['Capability_Index'] = (
-    (combined_df['Performance Metric'] * 0.4) +           # 40% Weight: Internal KPI
-    ((combined_df['Student Satisfaction %'] / 10) * 0.3) + # 30% Weight: Student Feedback
-    ((combined_df['Peer Review (1-5)'] * 2) * 0.2) +      # 20% Weight: Peer Review
-    (np.log1p(combined_df['Seniority (Years)']) * 0.1)    # 10% Weight: Experience
+# 2. Logic: Multi-Objective Capability Index
+# We normalize scales to a 0.0 - 1.0 range for fair weighting
+combined_stats['Capability_Score'] = (
+    (combined_stats['Performance Metric'] / 10 * 0.4) +        # 40% Internal Performance
+    (combined_stats['Student Satisfaction %'] / 100 * 0.3) +  # 30% Student Feedback
+    (combined_stats['Peer Review (1-5)'] / 5 * 0.2) +         # 20% Peer Review
+    (np.log1p(combined_stats['Seniority (Years)']) / 3 * 0.1) # 10% Seniority (Diminishing returns)
 )
 
-final_rank = combined_df.sort_values(by="Capability_Index", ascending=False)
+final_rank = combined_stats.sort_values(by="Capability_Score", ascending=False)
 
-# Results Display - Metrics
-m1, m2, m3 = st.columns(3)
-m1.metric("Optimal Staff Required", f"{int(opt_staff_req)} Teachers")
-m2.metric("Current Staff Count", f"{current_staff_count}")
-m3.metric("Staffing Gap", f"{int(opt_staff_req - current_staff_count)}")
+# 3. Results Display
+col_res1, col_res2 = st.columns([1, 2])
 
-# Visualizing the Capability Portfolio
-st.subheader("📊 Knowledge-Capability Mapping")
-fig = px.bar(
-    final_rank, 
-    x="Teacher Name", 
-    y="Capability_Index", 
-    color="Capability_Index",
-    text_auto='.2f',
-    title="Combined Teacher Ranking (Internal + External Metrics)",
-    color_continuous_scale="RdYlGn"
-)
-st.plotly_chart(fig, use_container_width=True)
+with col_res1:
+    st.metric("Optimal Staff Required", f"{int(opt_staff)} Teachers")
+    st.metric("Current Staff Count", len(edited_b_df))
+    
+    gap = int(opt_staff - len(edited_b_df))
+    if gap > 0:
+        st.warning(f"⚠️ Staffing Shortage: +{gap} needed")
+    else:
+        st.success("✅ Staffing Levels Optimal")
 
-# Final Summary Recommendation
-top_teacher = final_rank.iloc[0]["Teacher Name"]
-st.success(f"""
-**Optimization Summary:**
-* To maintain a **{target_ratio}:1** ratio with **{admin_hours}h** admin burden, you require **{int(opt_staff_req)}** total staff.
-* Currently, you have a gap of **{int(opt_staff_req - current_staff_count)}** teachers.
-* **Top Talent Recommendation:** We recommend assigning **{top_teacher}** to lead high-priority or high-load clusters.
-""")
+with col_res2:
+    fig = px.bar(final_rank, x="Teacher Name", y="Capability_Score", 
+                 color="Capability_Score", title="Total Capability Mapping",
+                 color_continuous_

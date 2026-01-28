@@ -1,4 +1,6 @@
 
+
+
 import streamlit as st
 import pandas as pd
 from fpdf import FPDF
@@ -201,3 +203,4 @@ else:
         with c2:
             pdf_bytes = create_pdf(nav, display_data)
             st.download_button(f"📥 Download {nav} PDF", pdf_bytes, f"{nav}.pdf")
+

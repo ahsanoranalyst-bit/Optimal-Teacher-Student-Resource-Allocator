@@ -1,7 +1,11 @@
+
+
 import streamlit as st
 import pandas as pd
 from fpdf import FPDF
 import plotly.express as px
+import io
+import tempfile
 
 # --- 1. CORE INITIALIZATION ---
 ACTIVATION_KEY = "PAK-2026"
@@ -24,21 +28,6 @@ class SchoolPDF(FPDF):
         name = st.session_state.data_store.get("School_Name", "SCHOOL REPORT")
         self.cell(0, 10, name.upper(), 0, 1, 'C')
         self.ln(5)
-
-def create_pdf(data):
-    pdf = SchoolPDF()
-    pdf.add_page()
-    df = pd.DataFrame(data)
-    pdf.set_font('Arial', 'B', 10)
-    if not df.empty:
-        col_width = 190 / len(df.columns)
-        for col in df.columns: pdf.cell(col_width, 10, str(col), 1)
-        pdf.ln()
-        pdf.set_font('Arial', '', 9)
-        for _, row in df.iterrows():
-            for val in row: pdf.cell(col_width, 10, str(val), 1)
-            pdf.ln()
-    return pdf.output(dest='S').encode('latin-1')
 
 # --- 3. UI LOGIC ---
 if not st.session_state.authenticated:
@@ -125,7 +114,7 @@ else:
             
             if matches:
                 best_t = sorted(matches, key=lambda x: x['Success'], reverse=True)[0]
-                assigned_classes = [c['Class'] for c in st.session_state.data_store["C"] if c['Teacher'] == best_t['Name']]
+                assigned_classes = [c['Class'] for c in st.session_state.data_store["C"] if 'Teacher' in c and c['Teacher'] == best_t['Name']]
                 
                 st.info(f"💡 Recommendation: **{best_t['Name']}** (Score: {best_t['Success']}%)")
                 st.write(f"📌 Workload: Assigned to **{len(assigned_classes)}** classes.")
@@ -141,18 +130,39 @@ else:
         if st.session_state.data_store["A"]:
             df_a = pd.DataFrame(st.session_state.data_store["A"])
             
-            # 1. Overall Grade Distribution
+            # Graphs
             total_grades = df_a[['A', 'B', 'C', 'D']].sum().reset_index()
             total_grades.columns = ['Grade', 'Count']
             fig_grades = px.bar(total_grades, x='Grade', y='Count', title="Overall School Grade Distribution", color='Grade')
             st.plotly_chart(fig_grades)
             
-            # 2. Critical Subjects (High C & D count)
             df_a['Weakness'] = df_a['C'] + df_a['D']
             fig_weak = px.pie(df_a, values='Weakness', names='Subject', title="Weakest Areas by Subject")
             st.plotly_chart(fig_weak)
             
-            # 3. Efficiency Stats
+            st.markdown("---")
+            # PDF Download Button
+            if st.button("📥 Download Institution Summary PDF"):
+                try:
+                    pdf = SchoolPDF()
+                    pdf.add_page()
+                    pdf.set_font("Arial", 'B', 12)
+                    pdf.cell(0, 10, "Executive Performance Report", 0, 1, 'L')
+                    
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp1:
+                        fig_grades.write_image(tmp1.name)
+                        pdf.image(tmp1.name, x=10, y=None, w=180)
+                    
+                    pdf.ln(10)
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp2:
+                        fig_weak.write_image(tmp2.name)
+                        pdf.image(tmp2.name, x=10, y=None, w=180)
+
+                    pdf_bytes = pdf.output(dest='S').encode('latin-1')
+                    st.download_button(label="Click Here to Save PDF", data=pdf_bytes, file_name="Institution_Summary.pdf", mime="application/pdf")
+                except Exception as e:
+                    st.error(f"Error: {e}. Please ensure 'kaleido' is installed.")
+
             if st.session_state.data_store["C"]:
                 df_c = pd.DataFrame(st.session_state.data_store["C"])
                 st.subheader("Top Performing Deployments")

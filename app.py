@@ -1,3 +1,5 @@
+
+
 import streamlit as st
 import pandas as pd
 from fpdf import FPDF
@@ -30,13 +32,14 @@ def create_pdf(report_type, data):
     pdf.add_page()
     df = pd.DataFrame(data)
     pdf.set_font('Arial', 'B', 10)
+    col_width = 190 / len(df.columns)
     for col in df.columns:
-        pdf.cell(38, 10, str(col), 1)
+        pdf.cell(col_width, 10, str(col), 1)
     pdf.ln()
     pdf.set_font('Arial', '', 9)
     for _, row in df.iterrows():
         for val in row:
-            pdf.cell(38, 10, str(val), 1)
+            pdf.cell(col_width, 10, str(val), 1)
         pdf.ln()
     return pdf.output(dest='S').encode('latin-1')
 
@@ -62,6 +65,15 @@ else:
     nav = st.sidebar.selectbox("Menu", 
         ["Section A: Student Grades", "Section B: Teacher Profiles", 
          "Section C: Efficiency Mapping", "Teacher Demands", "Smart Analysis"])
+
+    # Mapping Navigation to Data Store Keys
+    key_map = {
+        "Section A: Student Grades": "A",
+        "Section B: Teacher Profiles": "B",
+        "Section C: Efficiency Mapping": "C",
+        "Teacher Demands": "Demands"
+    }
+    current_key = key_map.get(nav)
 
     if nav == "Section A: Student Grades":
         with st.form("a_form"):
@@ -112,13 +124,25 @@ else:
     elif nav == "Smart Analysis":
         results = []
         for mapping in st.session_state.data_store["C"]:
-            cls = next(x for x in st.session_state.data_store["A"] if f"{x['Grade']}-{x['Section']}" == mapping['Class'])
-            score = min(200, (cls['C'] * 10) + (cls['D'] * 20)) # Logic for C/D grade needs
-            results.append({"Teacher": mapping['Teacher'], "Class": mapping['Class'], "Need_Score": f"{score}/200"})
+            cls = next((x for x in st.session_state.data_store["A"] if f"{x['Grade']}-{x['Section']}" == mapping['Class']), None)
+            if cls:
+                score = min(200, (cls['C'] * 10) + (cls['D'] * 20))
+                results.append({"Teacher": mapping['Teacher'], "Class": mapping['Class'], "Need_Score": f"{score}/200"})
         st.table(results)
         display_data = results
 
+    # --- Data Management (Display & Delete) ---
     if 'display_data' in locals() and display_data:
-        st.dataframe(pd.DataFrame(display_data))
-        pdf_bytes = create_pdf(nav, display_data)
-        st.download_button("Download Report", pdf_bytes, "report.pdf")
+        st.markdown("---")
+        st.dataframe(pd.DataFrame(display_data), use_container_width=True)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            # Delete Button for mistake correction
+            if current_key and st.session_state.data_store[current_key]:
+                if st.button("❌ Delete Last Entry"):
+                    st.session_state.data_store[current_key].pop()
+                    st.rerun()
+        with col2:
+            pdf_bytes = create_pdf(nav, display_data)
+            st.download_button("📥 Download Report", pdf_bytes, f"{nav}.pdf")

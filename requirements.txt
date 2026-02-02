@@ -11,5 +11,6 @@ pandas
 uv
 openpyxl
 plotly
-kaleido==0.1.0post1
+
+
 

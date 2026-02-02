@@ -8,3 +8,5 @@ firebase-admin
 requests
 st-gsheets-connection
 pandas
+uv
+openpyxl

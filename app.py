@@ -1,4 +1,4 @@
-
+https://g.co/gemini/share/982c97d267f2 
 
 import streamlit as st
 import pandas as pd
@@ -29,13 +29,14 @@ def create_pdf(data):
     pdf.add_page()
     df = pd.DataFrame(data)
     pdf.set_font('Arial', 'B', 10)
-    col_width = 190 / len(df.columns)
-    for col in df.columns: pdf.cell(col_width, 10, str(col), 1)
-    pdf.ln()
-    pdf.set_font('Arial', '', 9)
-    for _, row in df.iterrows():
-        for val in row: pdf.cell(col_width, 10, str(val), 1)
+    if not df.empty:
+        col_width = 190 / len(df.columns)
+        for col in df.columns: pdf.cell(col_width, 10, str(col), 1)
         pdf.ln()
+        pdf.set_font('Arial', '', 9)
+        for _, row in df.iterrows():
+            for val in row: pdf.cell(col_width, 10, str(val), 1)
+            pdf.ln()
     return pdf.output(dest='S').encode('latin-1')
 
 # --- 3. UI LOGIC ---
@@ -96,11 +97,9 @@ else:
             st.warning("Please add Teachers and Grades first.")
         else:
             sel_c = st.selectbox("Select Class", c_names)
-            # Smart Logic: Identify class needs
             class_data = next(x for x in st.session_state.data_store["A"] if f"{x['Grade']}-{x['Section']}" == sel_c)
             weak_count = class_data['C'] + class_data['D']
             
-            # Recommend Teacher
             recommended = sorted(st.session_state.data_store["B"], key=lambda x: x['Success'], reverse=True)[0]
             st.info(f"💡 Advice: This class has {weak_count} weak students. Recommended: {recommended['Name']} (Success: {recommended['Success']}%)")
             
@@ -113,22 +112,30 @@ else:
     elif nav == "Smart Analysis":
         results = []
         for mapping in st.session_state.data_store["C"]:
-            teacher = next(t for t in st.session_state.data_store["B"] if t['Name'] == mapping['Teacher'])
-            score = min(200, (mapping['Class_Weakness'] * 15)) # Profit Level Logic
+            teacher = next((t for t in st.session_state.data_store["B"] if t['Name'] == mapping['Teacher']), {"Name": "Unknown", "Success": 0})
+            score = min(200, (mapping['Class_Weakness'] * 15)) 
             results.append({"Teacher": teacher['Name'], "Class": mapping['Class'], "Impact Score": f"{score}/200", "Success": f"{teacher['Success']}%"})
         st.table(results)
         display_data = results
 
-    # --- Global Display & Delete ---
-    if 'display_data' in locals() and display_data:
+    # --- 4. ADVANCED DATA MANAGEMENT (ANY ENTRY DELETE) ---
+    if 'display_data' in locals() and display_data and nav != "Smart Analysis":
         st.markdown("---")
-        st.dataframe(pd.DataFrame(display_data), use_container_width=True)
+        st.subheader("Records Management")
+        df_temp = pd.DataFrame(display_data)
+        st.dataframe(df_temp, use_container_width=True)
+        
+        # Delete functionality for any specific row
+        row_to_delete = st.selectbox("Select record index to delete", range(len(display_data)))
         col1, col2 = st.columns(2)
         with col1:
-            if current_key and st.session_state.data_store[current_key]:
-                if st.button("❌ Delete Last Entry"):
-                    st.session_state.data_store[current_key].pop()
-                    st.rerun()
+            if st.button("🗑️ Delete Selected Entry"):
+                st.session_state.data_store[current_key].pop(row_to_delete)
+                st.rerun()
         with col2:
             pdf_bytes = create_pdf(display_data)
-            st.download_button("📥 Download PDF", pdf_bytes, f"{nav}.pdf")
+            st.download_button("📥 Download PDF Report", pdf_bytes, f"{nav}.pdf")
+    
+    elif nav == "Smart Analysis" and display_data:
+        pdf_bytes = create_pdf(display_data)
+        st.download_button("📥 Download Analysis Report", pdf_bytes, "Analysis.pdf")

@@ -1,4 +1,4 @@
-https://g.co/gemini/share/982c97d267f2 
+
 
 import streamlit as st
 import pandas as pd
@@ -139,3 +139,4 @@ else:
     elif nav == "Smart Analysis" and display_data:
         pdf_bytes = create_pdf(display_data)
         st.download_button("📥 Download Analysis Report", pdf_bytes, "Analysis.pdf")
+

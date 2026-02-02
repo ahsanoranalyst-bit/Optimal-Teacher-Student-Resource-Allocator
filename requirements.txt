@@ -11,3 +11,4 @@ pandas
 uv
 openpyxl
 plotly
+kaleido

@@ -1,4 +1,4 @@
-https://g.co/gemini/share/c1c976fccd3f 
+
 
 import streamlit as st
 import pandas as pd
@@ -163,3 +163,4 @@ else:
             st.rerun()
         pdf_bytes = create_pdf(st.session_state.data_store[display_key])
         st.download_button("📥 Download PDF", pdf_bytes, f"{nav}.pdf")
+

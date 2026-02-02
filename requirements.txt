@@ -10,3 +10,4 @@ st-gsheets-connection
 pandas
 uv
 openpyxl
+plotly

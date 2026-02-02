@@ -136,24 +136,26 @@ else:
         if st.session_state.data_store["A"]:
             df_a = pd.DataFrame(st.session_state.data_store["A"])
             
-            # Visual 1: Grades Chart
+            # Bar Chart
             total_grades = df_a[['A', 'B', 'C', 'D']].sum().reset_index()
             total_grades.columns = ['Grade', 'Count']
             fig_grades = px.bar(total_grades, x='Grade', y='Count', title="Overall School Performance", color='Grade')
             st.plotly_chart(fig_grades)
             
-            # Visual 2: Critical Subjects
+            # Pie Chart
             df_a['Weakness'] = df_a['C'] + df_a['D']
             fig_weak = px.pie(df_a, values='Weakness', names='Subject', title="Critical Subjects (High C/D Grades)")
             st.plotly_chart(fig_weak)
 
+            # --- Summary PDF Button Section ---
             if st.session_state.data_store["C"]:
-                st.subheader("Final Deployment Summary")
+                st.markdown("---")
+                st.subheader("Final Resource Allocation Summary")
                 df_final = pd.DataFrame(st.session_state.data_store["C"])
                 st.dataframe(df_final, use_container_width=True)
                 
-                pdf_report = create_pdf(st.session_state.data_store["C"], title="Executive Deployment Summary")
-                st.download_button("📥 Download Summary PDF", pdf_report, "Principal_Summary.pdf")
+                summary_pdf = create_pdf(st.session_state.data_store["C"], title="Executive Institution Summary")
+                st.download_button("📥 Download Summary Report (PDF)", summary_pdf, "Institution_Summary.pdf")
         else:
             st.info("Input student performance (A) to see the summary.")
         display_key = None

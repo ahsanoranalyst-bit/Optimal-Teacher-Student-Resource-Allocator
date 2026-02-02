@@ -1,4 +1,4 @@
-
+https://g.co/gemini/share/c1c976fccd3f 
 
 import streamlit as st
 import pandas as pd
@@ -69,11 +69,10 @@ elif not st.session_state.setup_complete:
             full_key = f"{g_name}-{s_name}"
             subjects = [s.strip() for s in sub_input.split(",") if s.strip()]
             st.session_state.data_store["Grades_Config"][full_key] = subjects
-            st.success(f"✅ Added {full_key} with {len(subjects)} subjects successfully!")
+            st.success(f"✅ Added {full_key} successfully!")
         else:
-            st.warning("⚠️ Please enter a Section name before adding.")
+            st.warning("⚠️ Please enter a Section name.")
     
-    # یہاں سے میں نے وہ فالتو 'Current Setup' والا حصہ ہٹا دیا ہے
     st.markdown("---")
     if st.session_state.data_store["Grades_Config"]:
         st.info(f"Total Classes Configured: {len(st.session_state.data_store['Grades_Config'])}")
@@ -94,25 +93,19 @@ else:
         
         with st.form("a_form"):
             c1, c2, c3, c4 = st.columns(4)
-            ga = c1.number_input("Count of A", 0)
-            gb = c2.number_input("Count of B", 0)
-            gc = c3.number_input("Count of C", 0)
-            gd = c4.number_input("Count of D", 0)
-            
+            ga, gb, gc, gd = c1.number_input("A", 0), c2.number_input("B", 0), c3.number_input("C", 0), c4.number_input("D", 0)
             if st.form_submit_button("Save Performance Data"):
                 st.session_state.data_store["A"].append({
                     "Class": sel_class, "Subject": sel_sub, 
                     "A": ga, "B": gb, "C": gc, "D": gd, "Total": ga+gb+gc+gd
                 })
-                st.success("Entry Saved!")
                 st.rerun()
         display_key = "A"
 
     elif nav == "Teacher Experts (B)":
         st.header("👨‍🏫 Teacher Specialization")
         all_subs = set()
-        for s_list in st.session_state.data_store["Grades_Config"].values():
-            all_subs.update(s_list)
+        for s_list in st.session_state.data_store["Grades_Config"].values(): all_subs.update(s_list)
         
         with st.form("b_form"):
             t_name = st.text_input("Full Name")
@@ -120,7 +113,6 @@ else:
             t_rate = st.slider("Historical Success Rate (%)", 1, 100, 70)
             if st.form_submit_button("Register Teacher"):
                 st.session_state.data_store["B"].append({"Name": t_name, "Expertise": t_exp, "Success": t_rate})
-                st.success("Teacher Added!")
                 st.rerun()
         display_key = "B"
 
@@ -131,41 +123,43 @@ else:
         else:
             options = [f"{x['Class']} | {x['Subject']}" for x in st.session_state.data_store["A"]]
             sel = st.selectbox("Select Class/Subject to Analyze", options)
-            
             parts = sel.split(" | ")
             target_data = next(x for x in st.session_state.data_store["A"] if x['Class'] == parts[0] and x['Subject'] == parts[1])
             
-            # Evidence-based logic
+            # Smart logic
             weak_factor = (target_data['C'] * 1.5) + (target_data['D'] * 2.5)
-            
             matches = [t for t in st.session_state.data_store["B"] if t['Expertise'] == parts[1]]
+            
             if matches:
                 best_t = sorted(matches, key=lambda x: x['Success'], reverse=True)[0]
-                st.info(f"💡 Recommendation: Deploy **{best_t['Name']}**. Subject Strength: {best_t['Success']}%")
                 
-                if st.button("Confirm Deployment & Record Efficiency"):
-                    # Profit/Impact scale 1-200
+                # --- NEW WORKLOAD LOGIC ---
+                assigned_classes = [c['Class'] for c in st.session_state.data_store["C"] if c['Teacher'] == best_t['Name']]
+                workload_count = len(assigned_classes)
+                
+                st.info(f"💡 Recommendation: **{best_t['Name']}** (Score: {best_t['Success']}%)")
+                st.write(f"📌 Current Workload: Assigned to **{workload_count}** classes.")
+                if workload_count > 0:
+                    st.write(f"📍 Already busy in: {', '.join(assigned_classes)}")
+
+                if st.button("Confirm Deployment"):
                     impact = min(200, (weak_factor * (best_t['Success']/40)))
                     st.session_state.data_store["C"].append({
-                        "Class": parts[0], "Subject": parts[1], "Teacher": best_t['Name'], "Efficiency_Impact": round(impact, 2)
+                        "Class": parts[0], "Subject": parts[1], "Teacher": best_t['Name'], "Impact": round(impact, 2)
                     })
-                    st.success("Mapping Recorded!")
                     st.rerun()
             else:
-                st.error("No specialized teacher found for this subject.")
+                st.error("No specialized teacher found.")
         display_key = "C"
 
-    # --- SHARED DATA MANAGEMENT ---
+    # --- SHARED VIEW ---
     if 'display_key' in locals() and st.session_state.data_store[display_key]:
         st.markdown("---")
         df = pd.DataFrame(st.session_state.data_store[display_key])
         st.dataframe(df, use_container_width=True)
-        
-        idx = st.selectbox("Select Row ID to Delete", df.index)
-        col1, col2 = st.columns(2)
-        if col1.button("🗑️ Delete Selected"):
+        idx = st.selectbox("Select Row to Delete", df.index)
+        if st.button("🗑️ Delete"):
             st.session_state.data_store[display_key].pop(idx)
             st.rerun()
-        
         pdf_bytes = create_pdf(st.session_state.data_store[display_key])
-        col2.download_button("📥 Download Report (PDF)", pdf_bytes, f"{nav}.pdf")
+        st.download_button("📥 Download PDF", pdf_bytes, f"{nav}.pdf")

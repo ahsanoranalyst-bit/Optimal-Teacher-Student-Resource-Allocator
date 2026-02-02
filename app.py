@@ -7,15 +7,14 @@ from fpdf import FPDF
 # --- 1. CORE INITIALIZATION ---
 ACTIVATION_KEY = "PAK-2026"
 
-# Ensure all keys exist in session state to avoid KeyErrors
 if 'authenticated' not in st.session_state: st.session_state.authenticated = False
 if 'setup_complete' not in st.session_state: st.session_state.setup_complete = False
 if 'data_store' not in st.session_state:
     st.session_state.data_store = {
-        "Grades_Config": {}, # Dictionary to store Subjects per Class-Section
-        "A": [], # Student Grades
-        "B": [], # Teacher Profiles
-        "C": [], # Efficiency Mapping
+        "Grades_Config": {}, 
+        "A": [],             
+        "B": [],             
+        "C": [],             
         "School_Name": ""
     }
 
@@ -44,7 +43,6 @@ def create_pdf(data):
 
 # --- 3. UI LOGIC ---
 
-# Step 1: Activation
 if not st.session_state.authenticated:
     st.title("🔐 Secure Activation")
     key_input = st.text_input("Enter System Key", type="password")
@@ -55,40 +53,39 @@ if not st.session_state.authenticated:
         else:
             st.error("Invalid Access Key")
 
-# Step 2: Grade & Section Setup
 elif not st.session_state.setup_complete:
     st.title("⚙️ School Configuration")
     st.session_state.data_store["School_Name"] = st.text_input("School Name", "My Institution")
     
-    st.subheader("Define Class, Section & Subjects")
+    st.subheader("Step 1: Define Grade, Section & Subjects")
     c1, c2 = st.columns(2)
     g_name = c1.selectbox("Grade", [f"Grade {i}" for i in range(1, 13)])
-    s_name = c2.text_input("Section (e.g., A, B, Blue, Green)")
+    s_name = c2.text_input("Section Name (e.g., A, B, Blue)")
     
-    sub_input = st.text_area("Enter Subjects (comma separated)", "Math, English, Science")
+    sub_input = st.text_area("Enter Subjects (separated by comma)", "Math, English, Science")
     
     if st.button("Add This Class Configuration"):
         if s_name:
             full_key = f"{g_name}-{s_name}"
             subjects = [s.strip() for s in sub_input.split(",") if s.strip()]
             st.session_state.data_store["Grades_Config"][full_key] = subjects
-            st.success(f"Added {full_key} with {len(subjects)} subjects.")
+            st.success(f"✅ Added {full_key} with {len(subjects)} subjects successfully!")
         else:
-            st.warning("Please enter a Section name.")
+            st.warning("⚠️ Please enter a Section name before adding.")
     
-    st.write("Current Setup:", st.session_state.data_store["Grades_Config"])
-    
-    if st.session_state.data_store["Grades_Config"] and st.button("Finalize & Go to Dashboard"):
-        st.session_state.setup_complete = True
-        st.rerun()
+    # یہاں سے میں نے وہ فالتو 'Current Setup' والا حصہ ہٹا دیا ہے
+    st.markdown("---")
+    if st.session_state.data_store["Grades_Config"]:
+        st.info(f"Total Classes Configured: {len(st.session_state.data_store['Grades_Config'])}")
+        if st.button("🚀 Finalize & Go to Dashboard"):
+            st.session_state.setup_complete = True
+            st.rerun()
 
-# Step 3: Main Application
 else:
     st.sidebar.title(st.session_state.data_store["School_Name"])
-    nav = st.sidebar.selectbox("Menu", 
+    nav = st.sidebar.selectbox("Main Navigation", 
         ["Student Performance (A)", "Teacher Experts (B)", "Efficiency Mapping (C)"])
 
-    # SECTION A: Student Data
     if nav == "Student Performance (A)":
         st.header("📊 Input Student Grades")
         class_list = list(st.session_state.data_store["Grades_Config"].keys())
@@ -97,79 +94,78 @@ else:
         
         with st.form("a_form"):
             c1, c2, c3, c4 = st.columns(4)
-            ga = c1.number_input("Grade A", 0)
-            gb = c2.number_input("Grade B", 0)
-            gc = c3.number_input("Grade C", 0)
-            gd = c4.number_input("Grade D", 0)
+            ga = c1.number_input("Count of A", 0)
+            gb = c2.number_input("Count of B", 0)
+            gc = c3.number_input("Count of C", 0)
+            gd = c4.number_input("Count of D", 0)
             
-            if st.form_submit_button("Save Data"):
+            if st.form_submit_button("Save Performance Data"):
                 st.session_state.data_store["A"].append({
                     "Class": sel_class, "Subject": sel_sub, 
                     "A": ga, "B": gb, "C": gc, "D": gd, "Total": ga+gb+gc+gd
                 })
+                st.success("Entry Saved!")
                 st.rerun()
         display_key = "A"
 
-    # SECTION B: Teacher Data
     elif nav == "Teacher Experts (B)":
         st.header("👨‍🏫 Teacher Specialization")
-        # Get all unique subjects defined in setup
         all_subs = set()
         for s_list in st.session_state.data_store["Grades_Config"].values():
             all_subs.update(s_list)
         
         with st.form("b_form"):
-            t_name = st.text_input("Teacher Name")
-            t_exp = st.selectbox("Specialization", list(all_subs))
-            t_rate = st.slider("Past Success Rate (%)", 1, 100, 70)
-            if st.form_submit_button("Add Teacher"):
+            t_name = st.text_input("Full Name")
+            t_exp = st.selectbox("Specialized Subject", list(all_subs))
+            t_rate = st.slider("Historical Success Rate (%)", 1, 100, 70)
+            if st.form_submit_button("Register Teacher"):
                 st.session_state.data_store["B"].append({"Name": t_name, "Expertise": t_exp, "Success": t_rate})
+                st.success("Teacher Added!")
                 st.rerun()
         display_key = "B"
 
-    # SECTION C: Mapping Logic
     elif nav == "Efficiency Mapping (C)":
-        st.header("🎯 Efficiency & Allocation")
+        st.header("🎯 Solid Evidence & Allocation")
         if not st.session_state.data_store["A"] or not st.session_state.data_store["B"]:
-            st.warning("Input Data in Section A & B first.")
+            st.warning("Please complete Section A and B first.")
         else:
             options = [f"{x['Class']} | {x['Subject']}" for x in st.session_state.data_store["A"]]
-            sel = st.selectbox("Analyze Class Performance", options)
+            sel = st.selectbox("Select Class/Subject to Analyze", options)
             
-            # Find the data
             parts = sel.split(" | ")
             target_data = next(x for x in st.session_state.data_store["A"] if x['Class'] == parts[0] and x['Subject'] == parts[1])
             
-            # Profit/Efficiency Logic (Scale 1-200)
-            weak_students = (target_data['C'] * 1.2) + (target_data['D'] * 2.0)
+            # Evidence-based logic
+            weak_factor = (target_data['C'] * 1.5) + (target_data['D'] * 2.5)
             
-            # Find matching teacher
             matches = [t for t in st.session_state.data_store["B"] if t['Expertise'] == parts[1]]
             if matches:
                 best_t = sorted(matches, key=lambda x: x['Success'], reverse=True)[0]
-                st.info(f"💡 Recommended: {best_t['Name']} for {parts[1]} (Expertise Score: {best_t['Success']}%)")
+                st.info(f"💡 Recommendation: Deploy **{best_t['Name']}**. Subject Strength: {best_t['Success']}%")
                 
-                if st.button("Confirm This Mapping"):
-                    impact = min(200, (weak_students * (best_t['Success']/40)))
+                if st.button("Confirm Deployment & Record Efficiency"):
+                    # Profit/Impact scale 1-200
+                    impact = min(200, (weak_factor * (best_t['Success']/40)))
                     st.session_state.data_store["C"].append({
-                        "Class": parts[0], "Subject": parts[1], "Teacher": best_t['Name'], "Impact_Score": round(impact, 2)
+                        "Class": parts[0], "Subject": parts[1], "Teacher": best_t['Name'], "Efficiency_Impact": round(impact, 2)
                     })
+                    st.success("Mapping Recorded!")
                     st.rerun()
             else:
-                st.error("No expert teacher found for this subject.")
+                st.error("No specialized teacher found for this subject.")
         display_key = "C"
 
-    # --- SHARED DATA VIEW & DELETE ---
+    # --- SHARED DATA MANAGEMENT ---
     if 'display_key' in locals() and st.session_state.data_store[display_key]:
         st.markdown("---")
         df = pd.DataFrame(st.session_state.data_store[display_key])
         st.dataframe(df, use_container_width=True)
         
-        idx = st.selectbox("Select Record Index to Delete", df.index)
+        idx = st.selectbox("Select Row ID to Delete", df.index)
         col1, col2 = st.columns(2)
-        if col1.button("🗑️ Delete Selected Record"):
+        if col1.button("🗑️ Delete Selected"):
             st.session_state.data_store[display_key].pop(idx)
             st.rerun()
         
         pdf_bytes = create_pdf(st.session_state.data_store[display_key])
-        col2.download_button("📥 Download Report", pdf_bytes, f"{nav}.pdf")
+        col2.download_button("📥 Download Report (PDF)", pdf_bytes, f"{nav}.pdf")

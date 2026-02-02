@@ -1,3 +1,5 @@
+
+
 import streamlit as st
 import pandas as pd
 from fpdf import FPDF
@@ -25,9 +27,13 @@ class SchoolPDF(FPDF):
         self.cell(0, 10, name.upper(), 0, 1, 'C')
         self.ln(5)
 
-def create_pdf(data):
+def create_pdf(data, title="Report"):
     pdf = SchoolPDF()
     pdf.add_page()
+    pdf.set_font('Arial', 'B', 12)
+    pdf.cell(0, 10, f"Section: {title}", 0, 1, 'L')
+    pdf.ln(5)
+    
     df = pd.DataFrame(data)
     pdf.set_font('Arial', 'B', 10)
     if not df.empty:
@@ -48,31 +54,26 @@ if not st.session_state.authenticated:
         if key_input == ACTIVATION_KEY:
             st.session_state.authenticated = True
             st.rerun()
-        else:
-            st.error("Invalid Access Key")
+        else: st.error("Invalid Access Key")
 
 elif not st.session_state.setup_complete:
     st.title("⚙️ School Configuration")
     st.session_state.data_store["School_Name"] = st.text_input("School Name", "My Institution")
     
-    st.subheader("Step 1: Define Grade, Section & Subjects")
+    st.subheader("Step 1: Class Setup")
     c1, c2 = st.columns(2)
     g_name = c1.selectbox("Grade", [f"Grade {i}" for i in range(1, 13)])
     s_name = c2.text_input("Section Name (e.g., A, B, Blue)")
-    sub_input = st.text_area("Enter Subjects (separated by comma)", "Math, English, Science")
+    sub_input = st.text_area("Subjects (separated by comma)", "Math, English, Science")
     
     if st.button("Add This Class Configuration"):
         if s_name:
             full_key = f"{g_name}-{s_name}"
             subjects = [s.strip() for s in sub_input.split(",") if s.strip()]
             st.session_state.data_store["Grades_Config"][full_key] = subjects
-            st.success(f"✅ Added {full_key} successfully!")
-        else:
-            st.warning("⚠️ Please enter a Section name.")
+            st.success(f"✅ Added {full_key}")
     
-    st.markdown("---")
     if st.session_state.data_store["Grades_Config"]:
-        st.info(f"Total Classes Configured: {len(st.session_state.data_store['Grades_Config'])}")
         if st.button("🚀 Finalize & Go to Dashboard"):
             st.session_state.setup_complete = True
             st.rerun()
@@ -100,11 +101,10 @@ else:
         st.header("👨‍🏫 Teacher Specialization")
         all_subs = set()
         for s_list in st.session_state.data_store["Grades_Config"].values(): all_subs.update(s_list)
-        
         with st.form("b_form"):
             t_name = st.text_input("Full Name")
             t_exp = st.selectbox("Specialized Subject", list(all_subs))
-            t_rate = st.slider("Historical Success Rate (%)", 1, 100, 70)
+            t_rate = st.slider("Success Rate (%)", 1, 100, 70)
             if st.form_submit_button("Register Teacher"):
                 st.session_state.data_store["B"].append({"Name": t_name, "Expertise": t_exp, "Success": t_rate})
                 st.rerun()
@@ -113,25 +113,20 @@ else:
     elif nav == "Efficiency Mapping (C)":
         st.header("🎯 Solid Evidence & Allocation")
         if not st.session_state.data_store["A"] or not st.session_state.data_store["B"]:
-            st.warning("Please complete Section A and B first.")
+            st.warning("Complete Section A and B first.")
         else:
             options = [f"{x['Class']} | {x['Subject']}" for x in st.session_state.data_store["A"]]
-            sel = st.selectbox("Select Class/Subject to Analyze", options)
+            sel = st.selectbox("Select Class/Subject", options)
             parts = sel.split(" | ")
             target_data = next(x for x in st.session_state.data_store["A"] if x['Class'] == parts[0] and x['Subject'] == parts[1])
             
-            weak_factor = (target_data['C'] * 1.5) + (target_data['D'] * 2.5)
             matches = [t for t in st.session_state.data_store["B"] if t['Expertise'] == parts[1]]
-            
             if matches:
                 best_t = sorted(matches, key=lambda x: x['Success'], reverse=True)[0]
-                assigned_classes = [c['Class'] for c in st.session_state.data_store["C"] if c['Teacher'] == best_t['Name']]
-                
-                st.info(f"💡 Recommendation: **{best_t['Name']}** (Score: {best_t['Success']}%)")
-                st.write(f"📌 Workload: Assigned to **{len(assigned_classes)}** classes.")
-
+                assigned_count = len([c for c in st.session_state.data_store["C"] if c['Teacher'] == best_t['Name']])
+                st.info(f"💡 Recommended: {best_t['Name']} | Workload: {assigned_count} Classes")
                 if st.button("Confirm Deployment"):
-                    impact = min(200, (weak_factor * (best_t['Success']/40)))
+                    impact = min(200, ((target_data['C']*1.5 + target_data['D']*2.5) * (best_t['Success']/40)))
                     st.session_state.data_store["C"].append({"Class": parts[0], "Subject": parts[1], "Teacher": best_t['Name'], "Impact": round(impact, 2)})
                     st.rerun()
         display_key = "C"
@@ -141,32 +136,32 @@ else:
         if st.session_state.data_store["A"]:
             df_a = pd.DataFrame(st.session_state.data_store["A"])
             
-            # 1. Overall Grade Distribution
+            # Visual 1: Grades Chart
             total_grades = df_a[['A', 'B', 'C', 'D']].sum().reset_index()
             total_grades.columns = ['Grade', 'Count']
-            fig_grades = px.bar(total_grades, x='Grade', y='Count', title="Overall School Grade Distribution", color='Grade')
+            fig_grades = px.bar(total_grades, x='Grade', y='Count', title="Overall School Performance", color='Grade')
             st.plotly_chart(fig_grades)
             
-            # 2. Critical Subjects (High C & D count)
+            # Visual 2: Critical Subjects
             df_a['Weakness'] = df_a['C'] + df_a['D']
-            fig_weak = px.pie(df_a, values='Weakness', names='Subject', title="Weakest Areas by Subject")
+            fig_weak = px.pie(df_a, values='Weakness', names='Subject', title="Critical Subjects (High C/D Grades)")
             st.plotly_chart(fig_weak)
-            
-            # 3. Efficiency Stats
+
             if st.session_state.data_store["C"]:
-                df_c = pd.DataFrame(st.session_state.data_store["C"])
-                st.subheader("Top Performing Deployments")
-                st.table(df_c.sort_values(by='Impact', ascending=False).head(5))
+                st.subheader("Final Deployment Summary")
+                df_final = pd.DataFrame(st.session_state.data_store["C"])
+                st.dataframe(df_final, use_container_width=True)
+                
+                pdf_report = create_pdf(st.session_state.data_store["C"], title="Executive Deployment Summary")
+                st.download_button("📥 Download Summary PDF", pdf_report, "Principal_Summary.pdf")
         else:
-            st.info("No data available for summary yet.")
+            st.info("Input student performance (A) to see the summary.")
         display_key = None
 
-    # --- SHARED VIEW ---
+    # --- SHARED TABLE VIEW ---
     if 'display_key' in locals() and display_key and st.session_state.data_store[display_key]:
         st.markdown("---")
-        df = pd.DataFrame(st.session_state.data_store[display_key])
-        st.dataframe(df, use_container_width=True)
-        idx = st.selectbox("Select Row to Delete", df.index)
-        if st.button("🗑️ Delete Record"):
-            st.session_state.data_store[display_key].pop(idx)
-            st.rerun()
+        df_show = pd.DataFrame(st.session_state.data_store[display_key])
+        st.dataframe(df_show, use_container_width=True)
+        pdf_bytes = create_pdf(st.session_state.data_store[display_key], title=nav)
+        st.download_button(f"📥 Download {nav} PDF", pdf_bytes, f"{nav}.pdf")

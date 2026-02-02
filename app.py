@@ -6,6 +6,7 @@ from fpdf import FPDF
 import plotly.express as px
 import io
 import tempfile
+import os
 
 # --- 1. CORE INITIALIZATION ---
 ACTIVATION_KEY = "PAK-2026"
@@ -130,7 +131,7 @@ else:
         if st.session_state.data_store["A"]:
             df_a = pd.DataFrame(st.session_state.data_store["A"])
             
-            # Graphs
+            # 1. Charts for Display
             total_grades = df_a[['A', 'B', 'C', 'D']].sum().reset_index()
             total_grades.columns = ['Grade', 'Count']
             fig_grades = px.bar(total_grades, x='Grade', y='Count', title="Overall School Grade Distribution", color='Grade')
@@ -141,27 +142,47 @@ else:
             st.plotly_chart(fig_weak)
             
             st.markdown("---")
-            # PDF Download Button
-            if st.button("📥 Download Institution Summary PDF"):
-                try:
-                    pdf = SchoolPDF()
-                    pdf.add_page()
-                    pdf.set_font("Arial", 'B', 12)
-                    pdf.cell(0, 10, "Executive Performance Report", 0, 1, 'L')
-                    
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp1:
-                        fig_grades.write_image(tmp1.name)
-                        pdf.image(tmp1.name, x=10, y=None, w=180)
-                    
-                    pdf.ln(10)
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp2:
-                        fig_weak.write_image(tmp2.name)
-                        pdf.image(tmp2.name, x=10, y=None, w=180)
+            # --- NEW PDF GENERATION SECTION ---
+            if st.button("📥 Generate Institution Report (PDF)"):
+                with st.spinner("Preparing Report..."):
+                    try:
+                        pdf = SchoolPDF()
+                        pdf.add_page()
+                        pdf.set_font("Arial", 'B', 14)
+                        pdf.cell(0, 10, "Institution Performance Summary", 0, 1, 'L')
+                        pdf.ln(5)
 
-                    pdf_bytes = pdf.output(dest='S').encode('latin-1')
-                    st.download_button(label="Click Here to Save PDF", data=pdf_bytes, file_name="Institution_Summary.pdf", mime="application/pdf")
-                except Exception as e:
-                    st.error(f"Error: {e}. Please ensure 'kaleido' is installed.")
+                        # Logic to save Plotly figures to images
+                        # Using Kaleido engine for high compatibility
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp1:
+                            fig_grades.write_image(tmp1.name, engine="kaleido")
+                            pdf.image(tmp1.name, x=10, y=None, w=180)
+                            tmp1_path = tmp1.name
+
+                        pdf.ln(10)
+
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp2:
+                            fig_weak.write_image(tmp2.name, engine="kaleido")
+                            pdf.image(tmp2.name, x=10, y=None, w=180)
+                            tmp2_path = tmp2.name
+
+                        # Output PDF bytes
+                        pdf_output = pdf.output(dest='S').encode('latin-1')
+                        st.download_button(
+                            label="📥 Download PDF Now",
+                            data=pdf_output,
+                            file_name="Institution_Report.pdf",
+                            mime="application/pdf"
+                        )
+                        st.success("Report Ready!")
+                        
+                        # Cleanup temp files
+                        os.remove(tmp1_path)
+                        os.remove(tmp2_path)
+                        
+                    except Exception as e:
+                        st.error(f"PDF Error: {str(e)}")
+                        st.info("Check if 'kaleido' and 'fpdf' are in your requirements.txt")
 
             if st.session_state.data_store["C"]:
                 df_c = pd.DataFrame(st.session_state.data_store["C"])

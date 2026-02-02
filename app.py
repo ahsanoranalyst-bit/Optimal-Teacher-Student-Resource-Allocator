@@ -3,17 +3,15 @@
 import streamlit as st
 import pandas as pd
 from fpdf import FPDF
-from datetime import datetime, date
+from datetime import date
 
 # --- 1. SYSTEM SETTINGS ---
 ACTIVATION_KEY = "PAK-2026"
-EXPIRY_DATE = date(2026, 12, 31)
-
 if 'authenticated' not in st.session_state: st.session_state.authenticated = False
 if 'setup_complete' not in st.session_state: st.session_state.setup_complete = False
 if 'school_name' not in st.session_state: st.session_state.school_name = ""
 if 'data_store' not in st.session_state:
-    st.session_state.data_store = {"A": [], "B": [], "C": [], "D": [], "Demands": []}
+    st.session_state.data_store = {"A": [], "B": [], "C": [], "Demands": []}
 
 # --- 2. PDF ENGINE ---
 class SchoolReportPDF(FPDF):
@@ -21,25 +19,22 @@ class SchoolReportPDF(FPDF):
         self.set_font('Arial', 'B', 15)
         self.cell(0, 10, st.session_state.school_name.upper(), 0, 1, 'C')
         self.ln(5)
-
     def footer(self):
         self.set_y(-15)
         self.set_font('Arial', 'I', 8)
         self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
 
-def create_pdf(report_type, data):
+def create_pdf(data):
     pdf = SchoolReportPDF()
     pdf.add_page()
     df = pd.DataFrame(data)
     pdf.set_font('Arial', 'B', 10)
     col_width = 190 / len(df.columns)
-    for col in df.columns:
-        pdf.cell(col_width, 10, str(col), 1)
+    for col in df.columns: pdf.cell(col_width, 10, str(col), 1)
     pdf.ln()
     pdf.set_font('Arial', '', 9)
     for _, row in df.iterrows():
-        for val in row:
-            pdf.cell(col_width, 10, str(val), 1)
+        for val in row: pdf.cell(col_width, 10, str(val), 1)
         pdf.ln()
     return pdf.output(dest='S').encode('latin-1')
 
@@ -66,13 +61,8 @@ else:
         ["Section A: Student Grades", "Section B: Teacher Profiles", 
          "Section C: Efficiency Mapping", "Teacher Demands", "Smart Analysis"])
 
-    # Mapping Navigation to Data Store Keys
-    key_map = {
-        "Section A: Student Grades": "A",
-        "Section B: Teacher Profiles": "B",
-        "Section C: Efficiency Mapping": "C",
-        "Teacher Demands": "Demands"
-    }
+    key_map = {"Section A: Student Grades": "A", "Section B: Teacher Profiles": "B", 
+               "Section C: Efficiency Mapping": "C", "Teacher Demands": "Demands"}
     current_key = key_map.get(nav)
 
     if nav == "Section A: Student Grades":
@@ -80,14 +70,9 @@ else:
             grade = st.selectbox("Grade", [f"Grade {i}" for i in range(1, 13)])
             sec = st.text_input("Section")
             c1, c2, c3, c4 = st.columns(4)
-            ga = c1.number_input("A Grade", 0)
-            gb = c2.number_input("B Grade", 0)
-            gc = c3.number_input("C Grade", 0)
-            gd = c4.number_input("D Grade", 0)
+            ga, gb, gc, gd = c1.number_input("A", 0), c2.number_input("B", 0), c3.number_input("C", 0), c4.number_input("D", 0)
             if st.form_submit_button("Save"):
-                st.session_state.data_store["A"].append({
-                    "Grade": grade, "Section": sec, "A": ga, "B": gb, "C": gc, "D": gd, "Total": ga+gb+gc+gd
-                })
+                st.session_state.data_store["A"].append({"Grade": grade, "Section": sec, "A": ga, "B": gb, "C": gc, "D": gd, "Total": ga+gb+gc+gd})
                 st.rerun()
         display_data = st.session_state.data_store["A"]
 
@@ -95,54 +80,55 @@ else:
         with st.form("b_form"):
             name = st.text_input("Teacher Name")
             qual = st.selectbox("Qualification", ["PhD", "Masters", "Bachelors"])
-            exp = st.number_input("Experience", 0)
-            if st.form_submit_button("Add"):
-                st.session_state.data_store["B"].append({"Name": name, "Qual": qual, "Exp": exp})
+            exp = st.number_input("Experience (Years)", 0)
+            success = st.slider("Past Success Rate (%)", 1, 100, 50)
+            if st.form_submit_button("Add Teacher"):
+                st.session_state.data_store["B"].append({"Name": name, "Qual": qual, "Exp": exp, "Success": success})
                 st.rerun()
         display_data = st.session_state.data_store["B"]
 
     elif nav == "Section C: Efficiency Mapping":
-        t_list = [t['Name'] for t in st.session_state.data_store["B"]]
-        c_list = [f"{c['Grade']}-{c['Section']}" for c in st.session_state.data_store["A"]]
-        with st.form("c_form"):
-            sel_t = st.selectbox("Teacher", t_list)
-            sel_c = st.selectbox("Class", c_list)
-            if st.form_submit_button("Link"):
-                st.session_state.data_store["C"].append({"Teacher": sel_t, "Class": sel_c})
-                st.rerun()
+        st.subheader("Smart Teacher-Class Allocation")
+        t_names = [t['Name'] for t in st.session_state.data_store["B"]]
+        c_names = [f"{c['Grade']}-{c['Section']}" for c in st.session_state.data_store["A"]]
+        
+        if not t_names or not c_names:
+            st.warning("Please add Teachers and Grades first.")
+        else:
+            sel_c = st.selectbox("Select Class", c_names)
+            # Smart Logic: Identify class needs
+            class_data = next(x for x in st.session_state.data_store["A"] if f"{x['Grade']}-{x['Section']}" == sel_c)
+            weak_count = class_data['C'] + class_data['D']
+            
+            # Recommend Teacher
+            recommended = sorted(st.session_state.data_store["B"], key=lambda x: x['Success'], reverse=True)[0]
+            st.info(f"💡 Advice: This class has {weak_count} weak students. Recommended: {recommended['Name']} (Success: {recommended['Success']}%)")
+            
+            sel_t = st.selectbox("Assign Teacher", t_names)
+            if st.button("Confirm Mapping"):
+                st.session_state.data_store["C"].append({"Teacher": sel_t, "Class": sel_c, "Class_Weakness": weak_count})
+                st.success("Mapping Saved!")
         display_data = st.session_state.data_store["C"]
-
-    elif nav == "Teacher Demands":
-        with st.form("dem_form"):
-            req_t = st.text_input("Required Teacher")
-            for_s = st.text_input("For Section")
-            if st.form_submit_button("Log"):
-                st.session_state.data_store["Demands"].append({"Teacher": req_t, "Section": for_s})
-                st.rerun()
-        display_data = st.session_state.data_store["Demands"]
 
     elif nav == "Smart Analysis":
         results = []
         for mapping in st.session_state.data_store["C"]:
-            cls = next((x for x in st.session_state.data_store["A"] if f"{x['Grade']}-{x['Section']}" == mapping['Class']), None)
-            if cls:
-                score = min(200, (cls['C'] * 10) + (cls['D'] * 20))
-                results.append({"Teacher": mapping['Teacher'], "Class": mapping['Class'], "Need_Score": f"{score}/200"})
+            teacher = next(t for t in st.session_state.data_store["B"] if t['Name'] == mapping['Teacher'])
+            score = min(200, (mapping['Class_Weakness'] * 15)) # Profit Level Logic
+            results.append({"Teacher": teacher['Name'], "Class": mapping['Class'], "Impact Score": f"{score}/200", "Success": f"{teacher['Success']}%"})
         st.table(results)
         display_data = results
 
-    # --- Data Management (Display & Delete) ---
+    # --- Global Display & Delete ---
     if 'display_data' in locals() and display_data:
         st.markdown("---")
         st.dataframe(pd.DataFrame(display_data), use_container_width=True)
-        
         col1, col2 = st.columns(2)
         with col1:
-            # Delete Button for mistake correction
             if current_key and st.session_state.data_store[current_key]:
                 if st.button("❌ Delete Last Entry"):
                     st.session_state.data_store[current_key].pop()
                     st.rerun()
         with col2:
-            pdf_bytes = create_pdf(nav, display_data)
-            st.download_button("📥 Download Report", pdf_bytes, f"{nav}.pdf")
+            pdf_bytes = create_pdf(display_data)
+            st.download_button("📥 Download PDF", pdf_bytes, f"{nav}.pdf")

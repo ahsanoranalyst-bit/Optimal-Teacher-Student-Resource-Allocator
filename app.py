@@ -2,31 +2,28 @@ import streamlit as st
 import pandas as pd
 from fpdf import FPDF
 from datetime import datetime
-import io
 
 # --- CONFIGURATION & STYLING ---
 st.set_page_config(page_title="Optimal Teacher-Student Resource Allocator", layout="wide")
 
-def initialize_session():
-    if 'authenticated' not in st.session_state:
-        st.session_state.authenticated = False
-    if 'org_name' not in st.session_state:
-        st.session_state.org_name = ""
-    if 'data' not in st.session_state:
-        st.session_state.data = {
-            "Section A": pd.DataFrame(),
-            "Section B": pd.DataFrame(),
-            "Section C": pd.DataFrame(),
-            "Section D": pd.DataFrame()
-        }
+# Mock Activation Key (In a real scenario, use Secrets)
+ACTIVATION_KEY = "Ahsan123"
 
-initialize_session()
+# --- SESSION STATE INITIALIZATION ---
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+if 'org_name' not in st.session_state:
+    st.session_state.org_name = ""
+if 'data_store' not in st.session_state:
+    st.session_state.data_store = {
+        "Section A": 0.0, "Section B": 0.0, "Section C": 0.0, "Section D": 0.0
+    }
 
-# --- PDF GENERATION LOGIC ---
-class PDF(FPDF):
+# --- PDF GENERATION CLASS ---
+class ReportPDF(FPDF):
     def header(self):
-        self.set_font('Arial', 'B', 12)
-        self.cell(0, 10, f'Resource Allocation Report - {st.session_state.org_name}', 0, 1, 'C')
+        self.set_font('Arial', 'B', 15)
+        self.cell(0, 10, 'Resource Allocation Analysis Report', 0, 1, 'C')
         self.ln(5)
 
     def footer(self):
@@ -34,125 +31,110 @@ class PDF(FPDF):
         self.set_font('Arial', 'I', 8)
         self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
 
-def generate_pdf(score, summary_data):
-    pdf = PDF()
+def generate_pdf(org_name, scores, final_score):
+    pdf = ReportPDF()
     pdf.add_page()
-    pdf.set_font("Arial", size=10)
+    pdf.set_font("Arial", size=12)
     
+    # Header Info
+    pdf.cell(200, 10, txt=f"Organization: {org_name}", ln=True)
     pdf.cell(200, 10, txt=f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}", ln=True)
     pdf.ln(10)
     
-    pdf.set_font("Arial", 'B', 16)
-    pdf.cell(200, 10, txt=f"Final Allocation Score: {score}/200", ln=True, align='C')
-    pdf.ln(10)
+    # Data Table
+    pdf.set_fill_color(200, 220, 255)
+    pdf.cell(100, 10, "Section", 1, 0, 'C', True)
+    pdf.cell(90, 10, "Component Score", 1, 1, 'C', True)
     
-    pdf.set_font("Arial", 'B', 12)
-    for section, details in summary_data.items():
-        pdf.cell(200, 10, txt=f"{section}:", ln=True)
-        pdf.set_font("Arial", size=10)
-        pdf.multi_cell(0, 10, txt=details)
-        pdf.ln(5)
-        pdf.set_font("Arial", 'B', 12)
-        
+    for section, val in scores.items():
+        pdf.cell(100, 10, section, 1)
+        pdf.cell(90, 10, f"{val:.2f}", 1, 1)
+    
+    pdf.ln(10)
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(200, 10, txt=f"FINAL AGGREGATE SCORE: {final_score}/200", ln=True)
     return pdf.output(dest='S').encode('latin-1')
 
-# --- 1. MULTI-LEVEL ENTRY (GATING) ---
+# --- UI LOGIC: ACTIVATION & IDENTITY ---
 if not st.session_state.authenticated:
     st.title("🔐 System Activation")
     col1, col2 = st.columns(2)
-    
     with col1:
-        activation_key = st.text_input("Enter Activation Key", type="password")
+        key_input = st.text_input("Enter Activation Key", type="password")
         org_input = st.text_input("Organization Name")
         
         if st.button("Activate System"):
-            # Hardcoded key for internal use; in prod, use st.secrets
-            if activation_key == "Ahsan123": 
-                if org_input:
-                    st.session_state.authenticated = True
-                    st.session_state.org_name = org_input
-                    st.rerun()
-                else:
-                    st.error("Please enter an Organization Name.")
+            if key_input == ACTIVATION_KEY and org_input.strip() != "":
+                st.session_state.authenticated = True
+                st.session_state.org_name = org_input
+                st.rerun()
             else:
-                st.error("Invalid Activation Key.")
+                st.error("Invalid Key or Organization Name missing.")
     st.stop()
 
 # --- MAIN APP INTERFACE ---
 st.title(f"📊 {st.session_state.org_name}")
 st.subheader("Optimal Teacher-Student Resource Allocator")
 
-# --- 2. SECTION-WISE ARCHITECTURE (TABS) ---
-tab_a, tab_b, tab_c, tab_d, tab_out = st.tabs([
-    "Section A: Student Load", 
-    "Section B: Teacher Profile", 
-    "Section C: Efficiency", 
-    "Section D: Feedback",
-    "Final Results"
-])
+tabs = st.tabs(["Section A: Student Load", "Section B: Teacher Profile", 
+                "Section C: Efficiency", "Section D: Feedback"])
 
-sections = {
-    "Section A": "Grade-wise student count, Special needs students",
-    "Section B": "Qualification, Seniority, Past performance metrics",
-    "Section C": "Target Teacher-Student ratio, Admin task hours",
-    "Section D": "Student satisfaction scores, Peer review data"
-}
+# Generic function to handle data inputs
+def handle_input(section_name, help_text):
+    st.write(f"### {section_name} Data Entry")
+    col_up, col_man = st.columns(2)
+    
+    with col_up:
+        uploaded_file = st.file_uploader(f"Upload CSV/Excel for {section_name}", key=f"file_{section_name}")
+        if uploaded_file:
+            try:
+                df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
+                st.success(f"Loaded {len(df)} rows")
+                # Simplified logic: use mean of numeric columns as a factor
+                return df.select_dtypes(include='number').mean().mean()
+            except Exception as e:
+                st.error(f"Error processing file: {e}")
+                
+    with col_man:
+        val = st.number_input(f"Manual Entry Score (0-50) for {section_name}", 0.0, 50.0, 25.0, key=f"man_{section_name}")
+        return val
 
-def handle_data_input(section_key, description):
-    st.info(f"Data Focus: {description}")
-    
-    upload = st.file_uploader(f"Upload CSV/Excel for {section_key}", type=['csv', 'xlsx'], key=f"up_{section_key}")
-    
-    if upload:
-        try:
-            df = pd.read_csv(upload) if upload.name.endswith('.csv') else pd.read_excel(upload)
-            st.session_state.data[section_key] = df
-            st.success(f"Loaded {len(df)} rows.")
-        except Exception as e:
-            st.error(f"Error loading file: {e}")
-            
-    # Manual Entry fallback/view
-    with st.expander("Manual Data Entry / Preview"):
-        edited_df = st.data_editor(st.session_state.data[section_key], num_rows="dynamic", key=f"ed_{section_key}")
-        st.session_state.data[section_key] = edited_df
+# Tab Content
+with tabs[0]:
+    st.session_state.data_store["Section A"] = handle_input("Section A", "Grade-wise count and special needs.")
 
-with tab_a: handle_data_input("Section A", sections["Section A"])
-with tab_b: handle_data_input("Section B", sections["Section B"])
-with tab_c: handle_data_input("Section C", sections["Section C"])
-with tab_d: handle_data_input("Section D", sections["Section D"])
+with tabs[1]:
+    st.session_state.data_store["Section B"] = handle_input("Section B", "Qualification, seniority, performance.")
 
-# --- 3. OUTPUT & MATHEMATICAL CALCULATION ---
-with tab_out:
-    st.header("Resource Allocation Summary")
-    
-    # Simple logic to simulate calculation based on data presence
-    # In a real app, replace with complex math: e.g., df['score'].mean()
-    base_score = 0
-    summary_text = {}
-    
-    for sec in sections.keys():
-        rows = len(st.session_state.data[sec])
-        val = min(rows * 10, 50) # Cap each section at 50 pts for demo
-        base_score += val
-        summary_text[sec] = f"Processed {rows} data entries. Section Contribution: {val}/50."
+with tabs[2]:
+    st.session_state.data_store["Section C"] = handle_input("Section C", "Ratios and admin task hours.")
 
-    final_score = min(base_score, 200)
+with tabs[3]:
+    st.session_state.data_store["Section D"] = handle_input("Section D", "Satisfaction and peer reviews.")
+
+# --- FINAL CALCULATION & OUTPUT ---
+st.divider()
+st.header("Results Summary")
+
+# Calculation Logic (Sum of sections, max 200)
+final_score = sum(st.session_state.data_store.values())
+# Ensure it stays within 1-200 bounds for the demo
+final_score = max(1.0, min(200.0, final_score))
+
+c1, c2 = st.columns(2)
+with c1:
+    st.metric("Aggregate Resource Score", f"{final_score:.2f} / 200")
     
-    col_score, col_btn = st.columns(2)
-    with col_score:
-        st.metric("Final Allocation Score", f"{final_score} / 200")
-    
-    # PDF Export
-    pdf_bytes = generate_pdf(final_score, summary_text)
-    
+with c2:
+    pdf_data = generate_pdf(st.session_state.org_name, st.session_state.data_store, round(final_score, 2))
     st.download_button(
         label="📥 Download PDF Report",
-        data=pdf_bytes,
-        file_name=f"Allocation_Report_{st.session_state.org_name}.pdf",
+        data=pdf_data,
+        file_name=f"Resource_Report_{st.session_state.org_name}.pdf",
         mime="application/pdf"
     )
 
-    st.divider()
-    if st.button("🔄 Reload Application"):
-        st.session_state.clear()
-        st.rerun()
+if st.button("🔄 Reset Application"):
+    for key in st.session_state.keys():
+        del st.session_state[key]
+    st.rerun()

@@ -5,7 +5,7 @@ import pandas as pd
 from fpdf import FPDF
 
 # --- 1. CORE INITIALIZATION ---
-ACTIVATION_KEY = "PAK-2026"
+ACTIVATION_KEY = "Ahsan123"
 
 if 'authenticated' not in st.session_state: st.session_state.authenticated = False
 if 'setup_complete' not in st.session_state: st.session_state.setup_complete = False
@@ -163,4 +163,5 @@ else:
             st.rerun()
         pdf_bytes = create_pdf(st.session_state.data_store[display_key])
         st.download_button("📥 Download PDF", pdf_bytes, f"{nav}.pdf")
+
 

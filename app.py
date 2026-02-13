@@ -1,3 +1,6 @@
+
+
+
 import streamlit as st
 import pandas as pd
 from fpdf import FPDF
@@ -56,12 +59,12 @@ def handle_bulk_upload():
                         subs = [s.strip() for s in str(row['Subjects']).split(",")]
                         st.session_state.data_store["Grades_Config"][key] = subs
                     st.sidebar.success("Classes Loaded!")
-                
+               
                 elif upload_type == "Student Performance":
                     for _, row in df.iterrows():
                         st.session_state.data_store["A"].append({
                             "Class": row['Class'], "Subject": row['Subject'],
-                            "A": row['A'], "B": row['B'], "C": row['C'], "D": row['D'], 
+                            "A": row['A'], "B": row['B'], "C": row['C'], "D": row['D'],
                             "Total": row['A']+row['B']+row['C']+row['D']
                         })
                     st.sidebar.success("Performance Data Loaded!")
@@ -92,14 +95,14 @@ elif not st.session_state.setup_complete:
     handle_bulk_upload()
     st.title("⚙️ School Configuration")
     st.session_state.data_store["School_Name"] = st.text_input("School Name", st.session_state.data_store.get("School_Name", "My Institution"))
-    
+   
     st.subheader("Step 1: Define Grade, Section & Subjects")
     c1, c2 = st.columns(2)
     g_name = c1.selectbox("Grade", [f"Grade {i}" for i in range(1, 13)])
     s_name = c2.text_input("Section Name (e.g., A, B, Blue)")
-    
+   
     sub_input = st.text_area("Enter Subjects (separated by comma)", "Math, English, Science")
-    
+   
     if st.button("Add This Class Configuration"):
         if s_name:
             full_key = f"{g_name}-{s_name}"
@@ -108,7 +111,7 @@ elif not st.session_state.setup_complete:
             st.success(f"✅ Added {full_key} successfully!")
         else:
             st.warning("⚠️ Please enter a Section name.")
-    
+   
     st.markdown("---")
     if st.session_state.data_store["Grades_Config"]:
         st.info(f"Total Classes Configured: {len(st.session_state.data_store['Grades_Config'])}")
@@ -130,7 +133,7 @@ else:
         else:
             sel_class = st.selectbox("Select Class-Section", class_list)
             sel_sub = st.selectbox("Select Subject", st.session_state.data_store["Grades_Config"][sel_class])
-            
+           
             with st.form("a_form"):
                 c1, c2, c3, c4 = st.columns(4)
                 ga, gb, gc, gd = c1.number_input("A", 0), c2.number_input("B", 0), c3.number_input("C", 0), c4.number_input("D", 0)
@@ -146,7 +149,7 @@ else:
         st.header("👨‍🏫 Teacher Specialization")
         all_subs = set()
         for s_list in st.session_state.data_store["Grades_Config"].values(): all_subs.update(s_list)
-        
+       
         with st.form("b_form"):
             t_name = st.text_input("Full Name")
             t_exp = st.selectbox("Specialized Subject", list(all_subs) if all_subs else ["N/A"])
@@ -165,15 +168,15 @@ else:
             sel = st.selectbox("Select Class/Subject to Analyze", options)
             parts = sel.split(" | ")
             target_data = next(x for x in st.session_state.data_store["A"] if x['Class'] == parts[0] and x['Subject'] == parts[1])
-            
+           
             weak_factor = (target_data['C'] * 1.5) + (target_data['D'] * 2.5)
             matches = [t for t in st.session_state.data_store["B"] if t['Expertise'] == parts[1]]
-            
+           
             if matches:
                 best_t = sorted(matches, key=lambda x: x['Success'], reverse=True)[0]
                 assigned_classes = [c['Class'] for c in st.session_state.data_store["C"] if c['Teacher'] == best_t['Name']]
                 workload_count = len(assigned_classes)
-                
+               
                 st.info(f"💡 Recommendation: **{best_t['Name']}** (Score: {best_t['Success']}%)")
                 st.write(f"📌 Current Workload: Assigned to **{workload_count}** classes.")
                 if st.button("Confirm Deployment"):

@@ -21,7 +21,6 @@ if 'data_store' not in st.session_state:
 def calculate_predictive_score(a, b, c, d):
     total = a + b + c + d
     if total == 0: return 0
-    # Weightage: A=100%, B=75%, C=50%, D=25%
     score = ((a * 100) + (b * 75) + (c * 50) + (d * 25)) / total
     return round(score, 2)
 
@@ -32,11 +31,11 @@ class SchoolPDF(FPDF):
         self.rect(0, 0, 210, 35, 'F')
         self.set_text_color(255, 255, 255)
         self.set_font('Arial', 'B', 18)
-        # Header Source [cite: 1]
-        school_name = st.session_state.data_store.get("School_Name", "GLOBAL INTERNATIONAL ACADEMY").upper()
-        self.cell(0, 12, school_name, 0, 1, 'C')
+        # [cite_start]Institution Header [cite: 1]
+        name = st.session_state.data_store.get("School_Name", "GLOBAL INTERNATIONAL ACADEMY").upper()
+        self.cell(0, 12, name, 0, 1, 'C')
         self.set_font('Arial', 'I', 10)
-        # Report Title Source [cite: 2]
+        # [cite_start]Report Title [cite: 2]
         self.cell(0, 8, "OFFICIAL ACADEMIC PERFORMANCE & DEPLOYMENT REPORT", 0, 1, 'C')
         self.set_text_color(0, 0, 0)
         self.ln(15)
@@ -47,7 +46,7 @@ class SchoolPDF(FPDF):
         self.set_text_color(120, 120, 120)
         self.cell(0, 10, "__________________________", 0, 1, 'R')
         self.cell(0, 5, "Authorized Signature & Official Stamp", 0, 1, 'R')
-        # Date Source [cite: 6]
+        # [cite_start]Timestamp and Pagination [cite: 6]
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
         self.cell(0, 10, f"Report Date: {timestamp} | Page {self.page_no()}", 0, 0, 'L')
 
@@ -56,31 +55,26 @@ def create_pdf(data, title):
     pdf.add_page()
     df = pd.DataFrame(data)
     
-    # Force full institution name into the PDF column
+    # [cite_start]Ensure full Institution name is visible in the table [cite: 4]
     if "Institution" in df.columns:
         df["Institution"] = "Global International Academy"
 
     pdf.set_font('Arial', 'B', 12)
     pdf.set_text_color(31, 73, 125)
-    # Section Source [cite: 3]
+    # [cite_start]Section Title [cite: 3]
     pdf.cell(0, 10, f"DOCUMENT SECTION: {title.upper()}", 0, 1, 'L')
     pdf.set_draw_color(31, 73, 125)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     pdf.ln(5)
     
     if not df.empty:
-        # Optimized Column Widths to prevent truncation
+        # Custom widths to prevent the "Global International Academy" from cutting off
         column_widths = {
-            "Institution": 55,
-            "Class": 25,
-            "Subject": 20,
-            "Teacher": 30,
-            "Current Score": 30,
-            "Status": 30
+            "Institution": 55, "Class": 25, "Subject": 25,
+            "Teacher": 30, "Current Score": 30, "Status": 25
         }
         default_w = 190 / len(df.columns)
 
-        # Header Row
         pdf.set_font('Arial', 'B', 8)
         pdf.set_fill_color(230, 235, 245)
         for col in df.columns:
@@ -88,7 +82,6 @@ def create_pdf(data, title):
             pdf.cell(w, 10, str(col), 1, 0, 'C', fill=True)
         pdf.ln()
         
-        # Data Rows
         pdf.set_font('Arial', '', 8)
         fill = False
         for _, row in df.iterrows():
@@ -102,7 +95,7 @@ def create_pdf(data, title):
             
     return pdf.output(dest='S').encode('latin-1')
 
-# --- 3. BULK UPLOAD LOGIC ---
+# --- 3. DATA IMPORT ---
 def handle_bulk_upload():
     st.sidebar.markdown("---")
     st.sidebar.subheader("📂 Excel Data Import")
@@ -149,8 +142,7 @@ if not st.session_state.authenticated:
         if key_input == ACTIVATION_KEY:
             st.session_state.authenticated = True
             st.rerun()
-        else: 
-            st.error("Invalid Key")
+        else: st.error("Invalid Key")
 
 elif not st.session_state.setup_complete:
     handle_bulk_upload()
@@ -190,17 +182,17 @@ else:
                 sel_class = st.selectbox("Class", class_list)
                 sel_sub = st.selectbox("Subject", st.session_state.data_store["Grades_Config"][sel_class])
                 with st.form("a_form"):
-                    c1,c2,c3,c4 = st.columns(4)
-                    ga = c1.number_input("A", 0)
-                    gb = c2.number_input("B", 0)
-                    gc = c3.number_input("C", 0)
-                    gd = c4.number_input("D", 0)
+                    c1, c2, c3, c4 = st.columns(4)
+                    val_a = c1.number_input("A", 0)
+                    val_b = c2.number_input("B", 0)
+                    val_c = c3.number_input("C", 0)
+                    val_d = c4.number_input("D", 0)
                     if st.form_submit_button("Save & Calculate Score"):
-                        p_score = calculate_predictive_score(ga, gb, gc, gd)
+                        p_score = calculate_predictive_score(val_a, val_b, val_c, val_d)
                         st.session_state.data_store["A"].append({
                             "Class": sel_class, "Subject": sel_sub, 
-                            "A": ga, "B": gb, "C": gc, "D": gd, 
-                            "Total": ga+gb+gc+gd,
+                            "A": val_a, "B": val_b, "C": val_c, "D": val_d, 
+                            "Total": val_a + val_b + val_c + val_d,
                             "Predictive Score": p_score
                         })
                         st.rerun()
@@ -232,10 +224,9 @@ else:
             
             if matches and class_data:
                 best_t = sorted(matches, key=lambda x: x['Success'], reverse=True)[0]
-                
                 col1, col2 = st.columns(2)
                 col1.metric("Current Predictive Score", f"{class_data['Predictive Score']}%")
-                col2.metric("Target (Teacher Rating)", f"{best_t['Success']}%", f"{best_t['Success'] - class_data['Predictive Score']}% Improvement")
+                col2.metric("Target (Teacher Rating)", f"{best_t['Success']}%", f"{round(best_t['Success'] - class_data['Predictive Score'], 2)}% Improvement")
 
                 if class_data['Predictive Score'] < 50:
                     st.error("⚠️ HIGH RISK: This class requires immediate teacher swapping.")
@@ -261,12 +252,10 @@ else:
         
         c1, c2 = st.columns(2)
         with c1:
-            if not df_view.empty:
-                row_idx = st.selectbox("Select row to delete", df_view.index)
-                if st.button("🗑️ Remove Record"):
-                    st.session_state.data_store[display_key].pop(row_idx)
-                    st.rerun()
+            row_idx = st.selectbox("Select row to delete", df_view.index)
+            if st.button("🗑️ Remove Record"):
+                st.session_state.data_store[display_key].pop(row_idx)
+                st.rerun()
         with c2:
-            if not df_view.empty:
-                pdf_bytes = create_pdf(st.session_state.data_store[display_key], nav)
-                st.download_button(f"📥 Download {nav} PDF", pdf_bytes, f"Report_{nav}.pdf")
+            pdf_bytes = create_pdf(st.session_state.data_store[display_key], nav)
+            st.download_button(f"📥 Download {nav} PDF", pdf_bytes, f"Report_{nav}.pdf")

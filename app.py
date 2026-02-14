@@ -57,9 +57,9 @@ def create_pdf(data, title):
     pdf.add_page()
     df = pd.DataFrame(data)
     
-    # Force full institution name into the dataframe
+    # [cite_start]Ensure full institution name displays in PDF [cite: 4]
     if "Institution" in df.columns:
-        df["Institution"] = "Global International Academy"
+        df["Institution"] = st.session_state.data_store.get("School_Name", "Global International Academy")
 
     pdf.set_font('Arial', 'B', 12)
     pdf.set_text_color(31, 73, 125)
@@ -70,7 +70,7 @@ def create_pdf(data, title):
     pdf.ln(5)
     
     if not df.empty:
-        # Optimized Column Widths to prevent truncation 
+        # Optimized Column Widths to prevent truncation of "Global International Academy"
         column_widths = {
             "Institution": 55,
             "Class": 25,
@@ -81,7 +81,6 @@ def create_pdf(data, title):
         }
         default_w = 190 / len(df.columns)
 
-        # Header Row
         pdf.set_font('Arial', 'B', 8)
         pdf.set_fill_color(230, 235, 245)
         for col in df.columns:
@@ -89,7 +88,6 @@ def create_pdf(data, title):
             pdf.cell(w, 10, str(col), 1, 0, 'C', fill=True)
         pdf.ln()
         
-        # Data Rows
         pdf.set_font('Arial', '', 8)
         fill = False
         for _, row in df.iterrows():
@@ -209,7 +207,8 @@ else:
         st.header("👨‍🏫 Faculty Specialization")
         display_key = "B"
         all_subs = set()
-        for s_list in st.session_state.data_store["Grades_Config"].values(): all_subs.update(s_list)
+        for s_list in st.session_state.data_store["Grades_Config"].values(): 
+            all_subs.update(s_list)
         with st.form("b_form"):
             t_name = st.text_input("Teacher Name")
             t_exp = st.selectbox("Expertise", list(all_subs) if all_subs else ["N/A"])
@@ -234,7 +233,7 @@ else:
                 
                 col1, col2 = st.columns(2)
                 col1.metric("Current Predictive Score", f"{class_data['Predictive Score']}%")
-                col2.metric("Target (Teacher Rating)", f"{best_t['Success']}%", f"{best_t['Success'] - class_data['Predictive Score']}% Improvement")
+                col2.metric("Target (Teacher Rating)", f"{best_t['Success']}%", f"{round(best_t['Success'] - class_data['Predictive Score'], 2)}% Improvement")
 
                 if class_data['Predictive Score'] < 50:
                     st.error("⚠️ HIGH RISK: This class requires immediate teacher swapping.")
@@ -257,14 +256,15 @@ else:
         st.subheader(f"📋 Record Data: {nav}")
         df_view = pd.DataFrame(st.session_state.data_store[display_key])
         st.dataframe(df_view, use_container_width=True)
+        
         c1, c2 = st.columns(2)
         with c1:
             if not df_view.empty:
-                row_idx = st.selectbox("Select row to delete", df_view.index)
-                if st.button("🗑️ Remove Record"):
+                row_idx = st.selectbox("Select row to delete", df_view.index, key=f"del_{display_key}")
+                if st.button("🗑️ Remove Record", key=f"btn_{display_key}"):
                     st.session_state.data_store[display_key].pop(row_idx)
                     st.rerun()
         with c2:
             if not df_view.empty:
                 pdf_bytes = create_pdf(st.session_state.data_store[display_key], nav)
-                st.download_button(f"📥 Download {nav} PDF", pdf_bytes, f"Report_{nav}.pdf")
+                st.download_button(f"📥 Download {nav} PDF", pdf_bytes, f"Report_{nav}.pdf", key=f"dl_{display_key}")

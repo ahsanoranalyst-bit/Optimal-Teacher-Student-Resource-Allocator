@@ -18,7 +18,6 @@ if 'data_store' not in st.session_state:
 # --- 2. PROFESSIONAL PDF ENGINE ---
 class SchoolPDF(FPDF):
     def header(self):
-        # Professional Navy Banner
         self.set_fill_color(31, 73, 125) 
         self.rect(0, 0, 210, 35, 'F')
         self.set_text_color(255, 255, 255)
@@ -39,10 +38,16 @@ class SchoolPDF(FPDF):
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
         self.cell(0, 10, f"Report Date: {timestamp} | Page {self.page_no()}", 0, 0, 'L')
 
+def clean_text(val):
+    """Deep cleaning helper to stop 'None' or 'nan' from appearing"""
+    if pd.isna(val) or val is None or str(val).lower() in ['nan', 'none', '']:
+        return ""
+    return str(val)
+
 def create_pdf(data, title):
     pdf = SchoolPDF()
     pdf.add_page()
-    df = pd.DataFrame(data).fillna('') # Protect against NaN
+    df = pd.DataFrame(data)
     
     pdf.set_font('Arial', 'B', 12)
     pdf.set_text_color(31, 73, 125)
@@ -64,9 +69,7 @@ def create_pdf(data, title):
         for _, row in df.iterrows():
             pdf.set_fill_color(248, 248, 248) if fill else pdf.set_fill_color(255, 255, 255)
             for val in row:
-                # Triple-check to ensure "None" or "nan" never appears
-                text = str(val) if (pd.notnull(val) and str(val).lower() != 'nan') else ""
-                pdf.cell(col_width, 9, text, 1, 0, 'C', fill=True)
+                pdf.cell(col_width, 9, clean_text(val), 1, 0, 'C', fill=True)
             pdf.ln()
             fill = not fill
     return pdf.output(dest='S').encode('latin-1')
@@ -80,38 +83,42 @@ def handle_bulk_upload():
 
     if u_file and st.sidebar.button(f"Process {u_type}"):
         try:
-            # fillna('') is the primary fix for "None" issues
-            df = pd.read_excel(u_file).fillna('')
+            # Drop completely empty rows and fill remaining NaN with empty string
+            df = pd.read_excel(u_file).dropna(how='all').fillna('')
             df.columns = [str(c).strip() for c in df.columns]
             
             if u_type == "Classes":
                 for _, row in df.iterrows():
-                    if row['Grade'] and row['Section']:
-                        key = f"{row['Grade']}-{row['Section']}"
-                        subs = [s.strip() for s in str(row['Subjects']).split(",") if s.strip()]
+                    g, s = clean_text(row.get('Grade')), clean_text(row.get('Section'))
+                    if g and s:
+                        key = f"{g}-{s}"
+                        subs = [sub.strip() for sub in str(row.get('Subjects', '')).split(",") if sub.strip()]
                         st.session_state.data_store["Grades_Config"][key] = subs
             
             elif u_type == "Student Performance":
                 for _, row in df.iterrows():
-                    st.session_state.data_store["A"].append({
-                        "Class": str(row['Class']), "Subject": str(row['Subject']),
-                        "A": int(row['A']) if row['A'] != '' else 0,
-                        "B": int(row['B']) if row['B'] != '' else 0,
-                        "C": int(row['C']) if row['C'] != '' else 0,
-                        "D": int(row['D']) if row['D'] != '' else 0,
-                        "Total": 0 
-                    })
-                    # Recalculate Total
-                    last = st.session_state.data_store["A"][-1]
-                    last["Total"] = last["A"] + last["B"] + last["C"] + last["D"]
+                    cls = clean_text(row.get('Class'))
+                    if cls: # Only add if the class name isn't empty
+                        st.session_state.data_store["A"].append({
+                            "Class": cls, "Subject": clean_text(row.get('Subject')),
+                            "A": int(row['A']) if str(row['A']).isdigit() else 0,
+                            "B": int(row['B']) if str(row['B']).isdigit() else 0,
+                            "C": int(row['C']) if str(row['C']).isdigit() else 0,
+                            "D": int(row['D']) if str(row['D']).isdigit() else 0,
+                            "Total": 0 
+                        })
+                        last = st.session_state.data_store["A"][-1]
+                        last["Total"] = last["A"] + last["B"] + last["C"] + last["D"]
 
             elif u_type == "Teachers":
                 for _, row in df.iterrows():
-                    st.session_state.data_store["B"].append({
-                        "Name": str(row['Name']), 
-                        "Expertise": str(row['Expertise']), 
-                        "Success": row['Success'] if row['Success'] != '' else 0
-                    })
+                    name = clean_text(row.get('Name'))
+                    if name:
+                        st.session_state.data_store["B"].append({
+                            "Name": name, 
+                            "Expertise": clean_text(row.get('Expertise')), 
+                            "Success": row['Success'] if row['Success'] != '' else 0
+                        })
             st.rerun()
         except Exception as e:
             st.sidebar.error(f"Import Failed: {e}")
@@ -119,10 +126,13 @@ def handle_bulk_upload():
 # --- 4. MAIN UI ---
 if not st.session_state.authenticated:
     st.title("🔐 Secure System Activation")
-    if st.text_input("Activation Key", type="password") == ACTIVATION_KEY:
-        if st.button("Unlock"):
+    pwd = st.text_input("Activation Key", type="password")
+    if st.button("Unlock"):
+        if pwd == ACTIVATION_KEY:
             st.session_state.authenticated = True
             st.rerun()
+        else:
+            st.error("Access Denied")
 
 elif not st.session_state.setup_complete:
     st.title("⚙️ Initial Setup")
@@ -135,7 +145,8 @@ elif not st.session_state.setup_complete:
         s = c2.text_input("Section (e.g. A)")
         subs = st.text_area("Subjects (comma separated)")
         if st.button("Add Class"):
-            st.session_state.data_store["Grades_Config"][f"{g}-{s}"] = [x.strip() for x in subs.split(",")]
+            if s:
+                st.session_state.data_store["Grades_Config"][f"{g}-{s}"] = [x.strip() for x in subs.split(",") if x.strip()]
     
     if st.session_state.data_store["Grades_Config"]:
         if st.button("🚀 Launch System"):
@@ -147,10 +158,8 @@ else:
     handle_bulk_upload()
     nav = st.sidebar.selectbox("Navigation", ["Section A: Students", "Section B: Teachers", "Section C: Strategy"])
 
-    # Determine display key
     d_key = "A" if "Students" in nav else "B" if "Teachers" in nav else "C"
     
-    # Section Logic
     if d_key == "A":
         st.header("📊 Student Performance")
         classes = list(st.session_state.data_store["Grades_Config"].keys())
@@ -159,10 +168,7 @@ else:
                 sel_c = st.selectbox("Class", classes)
                 sel_s = st.selectbox("Subject", st.session_state.data_store["Grades_Config"][sel_c])
                 col1, col2, col3, col4 = st.columns(4)
-                vA = col1.number_input("A", 0)
-                vB = col2.number_input("B", 0)
-                vC = col3.number_input("C", 0)
-                vD = col4.number_input("D", 0)
+                vA, vB, vC, vD = col1.number_input("A", 0), col2.number_input("B", 0), col3.number_input("C", 0), col4.number_input("D", 0)
                 if st.form_submit_button("Add Record"):
                     st.session_state.data_store["A"].append({
                         "Class": sel_c, "Subject": sel_s, "A": vA, "B": vB, "C": vC, "D": vD, "Total": vA+vB+vC+vD
@@ -183,7 +189,7 @@ else:
         st.header("🎯 Strategy Mapping")
         if st.session_state.data_store["A"] and st.session_state.data_store["B"]:
             analysis_opts = [f"{x['Class']} | {x['Subject']}" for x in st.session_state.data_store["A"]]
-            target = st.selectbox("Select Target for Mapping", analysis_opts)
+            target = st.selectbox("Select Target", analysis_opts)
             if st.button("Generate Strategy"):
                 sub = target.split(" | ")[1]
                 matches = [t for t in st.session_state.data_store["B"] if t['Expertise'].lower() == sub.lower()]
@@ -196,16 +202,15 @@ else:
                 })
                 st.rerun()
 
-    # Shared Table and Export
     if st.session_state.data_store[d_key]:
         st.divider()
-        current_df = pd.DataFrame(st.session_state.data_store[d_key]).fillna('')
+        current_df = pd.DataFrame(st.session_state.data_store[d_key])
         st.dataframe(current_df, use_container_width=True)
         
         c1, c2 = st.columns(2)
         with c1:
-            idx = st.number_input("Row index to delete", 0, len(current_df)-1, 0)
-            if st.button("Delete Selected Row"):
+            idx = st.number_input("Row index to delete", 0, max(0, len(current_df)-1), 0)
+            if st.button("Delete Selected Row") and len(current_df) > 0:
                 st.session_state.data_store[d_key].pop(idx)
                 st.rerun()
         with c2:

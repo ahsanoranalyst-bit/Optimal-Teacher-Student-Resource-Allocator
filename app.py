@@ -12,27 +12,29 @@ if 'data_store' not in st.session_state:
     st.session_state.data_store = {
         "Grades_Config": {},
         "A": [], "B": [], "C": [],
-        "School_Name": ""
+        "School_Name": "Global International Academy"
     }
 
-# --- PREDICTIVE ENGINE (NEW POINT 5) ---
+# --- PREDICTIVE ENGINE ---
 def calculate_predictive_score(a, b, c, d):
     total = a + b + c + d
     if total == 0: return 0
-    # Weightage: A=100%, B=75%, C=50%, D=25% (Adjustable)
+    # Weightage: A=100%, B=75%, C=50%, D=25%
     score = ((a * 100) + (b * 75) + (c * 50) + (d * 25)) / total
     return round(score, 2)
 
-# --- 2. PROFESSIONAL PDF ENGINE ---
+# --- 2. PROFESSIONAL PDF ENGINE (FIXED FOR INSTITUTION NAME) ---
 class SchoolPDF(FPDF):
     def header(self):
         self.set_fill_color(31, 73, 125)
         self.rect(0, 0, 210, 35, 'F')
         self.set_text_color(255, 255, 255)
         self.set_font('Arial', 'B', 18)
-        school_name = st.session_state.data_store.get("School_Name", "EDUCATIONAL INSTITUTION").upper()
+        # Header Source [cite: 1]
+        school_name = st.session_state.data_store.get("School_Name", "GLOBAL INTERNATIONAL ACADEMY").upper()
         self.cell(0, 12, school_name, 0, 1, 'C')
         self.set_font('Arial', 'I', 10)
+        # Report Title Source [cite: 2]
         self.cell(0, 8, "OFFICIAL ACADEMIC PERFORMANCE & DEPLOYMENT REPORT", 0, 1, 'C')
         self.set_text_color(0, 0, 0)
         self.ln(15)
@@ -42,7 +44,9 @@ class SchoolPDF(FPDF):
         self.set_font('Arial', 'I', 8)
         self.set_text_color(120, 120, 120)
         self.cell(0, 10, "__________________________", 0, 1, 'R')
+        # Signature Source 
         self.cell(0, 5, "Authorized Signature & Official Stamp", 0, 1, 'R')
+        # Date Source [cite: 6]
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
         self.cell(0, 10, f"Report Date: {timestamp} | Page {self.page_no()}", 0, 0, 'L')
 
@@ -50,30 +54,51 @@ def create_pdf(data, title):
     pdf = SchoolPDF()
     pdf.add_page()
     df = pd.DataFrame(data)
+    
+    # Force full institution name into the dataframe
+    if "Institution" in df.columns:
+        df["Institution"] = "Global International Academy"
+
     pdf.set_font('Arial', 'B', 12)
     pdf.set_text_color(31, 73, 125)
+    # Section Source [cite: 3]
     pdf.cell(0, 10, f"DOCUMENT SECTION: {title.upper()}", 0, 1, 'L')
     pdf.set_draw_color(31, 73, 125)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     pdf.ln(5)
     
     if not df.empty:
-        pdf.set_font('Arial', 'B', 9)
+        # Optimized Column Widths to prevent truncation 
+        column_widths = {
+            "Institution": 55,
+            "Class": 25,
+            "Subject": 20,
+            "Teacher": 30,
+            "Current Score": 30,
+            "Status": 30
+        }
+        default_w = 190 / len(df.columns)
+
+        # Header Row
+        pdf.set_font('Arial', 'B', 8)
         pdf.set_fill_color(230, 235, 245)
-        col_width = 190 / len(df.columns)
         for col in df.columns:
-            pdf.cell(col_width, 10, str(col), 1, 0, 'C', fill=True)
+            w = column_widths.get(col, default_w)
+            pdf.cell(w, 10, str(col), 1, 0, 'C', fill=True)
         pdf.ln()
         
+        # Data Rows
         pdf.set_font('Arial', '', 8)
         fill = False
         for _, row in df.iterrows():
             pdf.set_fill_color(248, 248, 248) if fill else pdf.set_fill_color(255, 255, 255)
-            for val in row:
-                text = str(val) if pd.notnull(val) else ""
-                pdf.cell(col_width, 9, text, 1, 0, 'C', fill=True)
+            for col in df.columns:
+                val = str(row[col]) if pd.notnull(row[col]) else ""
+                w = column_widths.get(col, default_w)
+                pdf.cell(w, 9, val, 1, 0, 'C', fill=True)
             pdf.ln()
             fill = not fill
+            
     return pdf.output(dest='S').encode('latin-1')
 
 # --- 3. BULK UPLOAD LOGIC ---
@@ -196,15 +221,12 @@ else:
             sel = st.selectbox("Analyze Needs", options)
             parts = sel.split(" | ")
             
-            # Find the selected class's current predictive score
             class_data = next((x for x in st.session_state.data_store["A"] if x['Class'] == parts[0] and x['Subject'] == parts[1]), None)
-            
             matches = [t for t in st.session_state.data_store["B"] if t['Expertise'] == parts[1]]
             
             if matches and class_data:
                 best_t = sorted(matches, key=lambda x: x['Success'], reverse=True)[0]
                 
-                # Visual Feedback for Predictive Score
                 col1, col2 = st.columns(2)
                 col1.metric("Current Predictive Score", f"{class_data['Predictive Score']}%")
                 col2.metric("Target (Teacher Rating)", f"{best_t['Success']}%", f"{best_t['Success'] - class_data['Predictive Score']}% Improvement")

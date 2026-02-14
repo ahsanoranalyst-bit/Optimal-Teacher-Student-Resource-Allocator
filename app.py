@@ -10,9 +10,9 @@ if 'setup_complete' not in st.session_state: st.session_state.setup_complete = F
 if 'data_store' not in st.session_state:
     st.session_state.data_store = {
         "Grades_Config": {},
-        "A": [],            
-        "B": [],            
-        "C": [],            
+        "A": [], # Student Performance            
+        "B": [], # Teacher Experts            
+        "C": [], # Efficiency Mapping            
         "School_Name": ""
     }
 
@@ -49,7 +49,6 @@ def handle_bulk_upload():
     if uploaded_file:
         try:
             df = pd.read_excel(uploaded_file)
-            # Clean column names (strip spaces)
             df.columns = [str(c).strip() for c in df.columns]
             
             if st.sidebar.button(f"Process {upload_type}"):
@@ -61,32 +60,25 @@ def handle_bulk_upload():
                     st.sidebar.success("Classes Loaded!")
                 
                 elif upload_type == "Student Performance":
-                    # Ensure numeric columns are actually numbers
                     for col in ['A', 'B', 'C', 'D']:
                         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-                    
                     for _, row in df.iterrows():
                         st.session_state.data_store["A"].append({
-                            "Class": str(row['Class']), 
-                            "Subject": str(row['Subject']),
-                            "A": int(row['A']), 
-                            "B": int(row['B']), 
-                            "C": int(row['C']), 
-                            "D": int(row['D']),
+                            "Class": str(row['Class']), "Subject": str(row['Subject']),
+                            "A": int(row['A']), "B": int(row['B']), "C": int(row['C']), "D": int(row['D']),
                             "Total": int(row['A']+row['B']+row['C']+row['D'])
                         })
-                    st.sidebar.success(f"Loaded {len(df)} Student Records!")
+                    st.sidebar.success(f"Loaded {len(df)} Records!")
 
                 elif upload_type == "Teachers":
                     for _, row in df.iterrows():
                         st.session_state.data_store["B"].append({
                             "Name": row['Name'], "Expertise": row['Expertise'], "Success": row['Success']
                         })
-                    st.sidebar.success("Teachers Loaded!")
+                    st.sidebar.success(f"Loaded {len(df)} Teachers!")
                 st.rerun()
         except Exception as e:
             st.sidebar.error(f"Error: {e}")
-            st.sidebar.info("Check: Does your Excel have Class, Subject, A, B, C, D columns?")
 
 # --- 4. UI LOGIC ---
 if not st.session_state.authenticated:
@@ -108,7 +100,6 @@ elif not st.session_state.setup_complete:
     c1, c2 = st.columns(2)
     g_name = c1.selectbox("Grade", [f"Grade {i}" for i in range(1, 13)])
     s_name = c2.text_input("Section Name (e.g., A, B, Blue)")
-    
     sub_input = st.text_area("Enter Subjects (separated by comma)", "Math, English, Science")
     
     if st.button("Add This Class Configuration"):
@@ -117,12 +108,9 @@ elif not st.session_state.setup_complete:
             subjects = [s.strip() for s in sub_input.split(",") if s.strip()]
             st.session_state.data_store["Grades_Config"][full_key] = subjects
             st.success(f"✅ Added {full_key} successfully!")
-        else:
-            st.warning("⚠️ Please enter a Section name.")
     
     st.markdown("---")
     if st.session_state.data_store["Grades_Config"]:
-        st.info(f"Total Classes Configured: {len(st.session_state.data_store['Grades_Config'])}")
         if st.button("🚀 Finalize & Go to Dashboard"):
             st.session_state.setup_complete = True
             st.rerun()
@@ -130,36 +118,30 @@ elif not st.session_state.setup_complete:
 else:
     st.sidebar.title(st.session_state.data_store["School_Name"])
     handle_bulk_upload()
-    nav = st.sidebar.selectbox("Main Navigation",
-        ["Student Performance (A)", "Teacher Experts (B)", "Efficiency Mapping (C)"])
+    nav = st.sidebar.selectbox("Main Navigation", ["Student Performance (A)", "Teacher Experts (B)", "Efficiency Mapping (C)"])
+
+    display_key = None # Reset display key
 
     if nav == "Student Performance (A)":
         st.header("📊 Input Student Grades")
-        
-        # Manual Input Form
+        display_key = "A"
         class_list = list(st.session_state.data_store["Grades_Config"].keys())
-        if not class_list and not st.session_state.data_store["A"]:
-            st.warning("No classes configured. Use sidebar to upload Excel or add classes in Setup.")
-        else:
-            # Show manual input only if classes exist
-            if class_list:
-                with st.expander("➕ Add Single Record Manually"):
-                    sel_class = st.selectbox("Select Class-Section", class_list)
-                    sel_sub = st.selectbox("Select Subject", st.session_state.data_store["Grades_Config"][sel_class])
-                    
-                    with st.form("a_form"):
-                        c1, c2, c3, c4 = st.columns(4)
-                        ga, gb, gc, gd = c1.number_input("A", 0), c2.number_input("B", 0), c3.number_input("C", 0), c4.number_input("D", 0)
-                        if st.form_submit_button("Save Performance Data"):
-                            st.session_state.data_store["A"].append({
-                                "Class": sel_class, "Subject": sel_sub,
-                                "A": ga, "B": gb, "C": gc, "D": gd, "Total": ga+gb+gc+gd
-                            })
-                            st.rerun()
-            display_key = "A"
+        if class_list:
+            with st.expander("➕ Add Single Record Manually"):
+                sel_class = st.selectbox("Select Class-Section", class_list)
+                sel_sub = st.selectbox("Select Subject", st.session_state.data_store["Grades_Config"][sel_class])
+                with st.form("a_form"):
+                    c1, c2, c3, c4 = st.columns(4)
+                    ga, gb, gc, gd = c1.number_input("A", 0), c2.number_input("B", 0), c3.number_input("C", 0), c4.number_input("D", 0)
+                    if st.form_submit_button("Save Performance Data"):
+                        st.session_state.data_store["A"].append({
+                            "Class": sel_class, "Subject": sel_sub, "A": ga, "B": gb, "C": gc, "D": gd, "Total": ga+gb+gc+gd
+                        })
+                        st.rerun()
 
     elif nav == "Teacher Experts (B)":
         st.header("👨‍🏫 Teacher Specialization")
+        display_key = "B"
         all_subs = set()
         for s_list in st.session_state.data_store["Grades_Config"].values(): all_subs.update(s_list)
         
@@ -170,10 +152,10 @@ else:
             if st.form_submit_button("Register Teacher"):
                 st.session_state.data_store["B"].append({"Name": t_name, "Expertise": t_exp, "Success": t_rate})
                 st.rerun()
-        display_key = "B"
 
     elif nav == "Efficiency Mapping (C)":
         st.header("🎯 Solid Evidence & Allocation")
+        display_key = "C"
         if not st.session_state.data_store["A"] or not st.session_state.data_store["B"]:
             st.warning("Please complete Section A and B first.")
         else:
@@ -182,39 +164,29 @@ else:
             parts = sel.split(" | ")
             target_data = next(x for x in st.session_state.data_store["A"] if x['Class'] == parts[0] and x['Subject'] == parts[1])
             
-            weak_factor = (target_data['C'] * 1.5) + (target_data['D'] * 2.5)
             matches = [t for t in st.session_state.data_store["B"] if t['Expertise'] == parts[1]]
-            
             if matches:
                 best_t = sorted(matches, key=lambda x: x['Success'], reverse=True)[0]
-                # Filter previous assignments safely
-                assigned_count = sum(1 for c in st.session_state.data_store["C"] if c['Teacher'] == best_t['Name'])
-                
-                st.info(f"💡 Recommendation: **{best_t['Name']}** (Score: {best_t['Success']}%)")
-                st.write(f"📌 Current Workload: Assigned to **{assigned_count}** classes.")
+                st.info(f"💡 Recommendation: **{best_t['Name']}**")
                 if st.button("Confirm Deployment"):
-                    impact = min(200, (weak_factor * (best_t['Success']/40)))
                     st.session_state.data_store["C"].append({
-                        "Class": parts[0], "Subject": parts[1], "Teacher": best_t['Name'], "Impact": round(impact, 2)
+                        "Class": parts[0], "Subject": parts[1], "Teacher": best_t['Name'], "Impact": "Confirmed"
                     })
                     st.rerun()
-            else:
-                st.error("No specialized teacher found.")
-        display_key = "C"
 
-    # --- SHARED VIEW ---
-    if 'display_key' in locals() and st.session_state.data_store[display_key]:
+    # --- SHARED VIEW (Ensures records show up) ---
+    if display_key and st.session_state.data_store[display_key]:
         st.markdown("---")
-        st.subheader("📋 Recorded Data")
+        st.subheader(f"📋 Current {nav} Records")
         df_view = pd.DataFrame(st.session_state.data_store[display_key])
         st.dataframe(df_view, use_container_width=True)
         
-        col_del, col_pdf = st.columns(2)
-        with col_del:
-            idx = st.selectbox("Select Row to Delete", df_view.index)
-            if st.button("🗑️ Delete"):
-                st.session_state.data_store[display_key].pop(idx)
+        c1, c2 = st.columns(2)
+        with c1:
+            row_to_del = st.selectbox("Select Row to Delete", df_view.index)
+            if st.button("🗑️ Delete Selected"):
+                st.session_state.data_store[display_key].pop(row_to_del)
                 st.rerun()
-        with col_pdf:
+        with c2:
             pdf_bytes = create_pdf(st.session_state.data_store[display_key])
             st.download_button("📥 Download PDF", pdf_bytes, f"{nav}.pdf")

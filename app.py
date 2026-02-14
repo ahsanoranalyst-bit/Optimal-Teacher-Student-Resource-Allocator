@@ -15,16 +15,13 @@ if 'data_store' not in st.session_state:
         "School_Name": ""
     }
 
-# --- PREDICTIVE ENGINE ---
+# --- PREDICTIVE ENGINE (NEW POINT 5) ---
 def calculate_predictive_score(a, b, c, d):
-    try:
-        total = a + b + c + d
-        if total == 0: return 0.0
-        # Weightage: A=100%, B=75%, C=50%, D=25%
-        score = ((a * 100) + (b * 75) + (c * 50) + (d * 25)) / total
-        return round(float(score), 2)
-    except:
-        return 0.0
+    total = a + b + c + d
+    if total == 0: return 0
+    # Weightage: A=100%, B=75%, C=50%, D=25% (Adjustable)
+    score = ((a * 100) + (b * 75) + (c * 50) + (d * 25)) / total
+    return round(score, 2)
 
 # --- 2. PROFESSIONAL PDF ENGINE ---
 class SchoolPDF(FPDF):
@@ -55,35 +52,41 @@ def create_pdf(data, title):
     df = pd.DataFrame(data)
     pdf.set_font('Arial', 'B', 12)
     pdf.set_text_color(31, 73, 125)
-    pdf.cell(0, 10, f"SECTION: {title.upper()}", 0, 1, 'L')
+    pdf.cell(0, 10, f"DOCUMENT SECTION: {title.upper()}", 0, 1, 'L')
+    pdf.set_draw_color(31, 73, 125)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     pdf.ln(5)
     
     if not df.empty:
-        pdf.set_font('Arial', 'B', 8)
+        pdf.set_font('Arial', 'B', 9)
         pdf.set_fill_color(230, 235, 245)
         col_width = 190 / len(df.columns)
         for col in df.columns:
             pdf.cell(col_width, 10, str(col), 1, 0, 'C', fill=True)
         pdf.ln()
         
-        pdf.set_font('Arial', '', 7)
+        pdf.set_font('Arial', '', 8)
+        fill = False
         for _, row in df.iterrows():
+            pdf.set_fill_color(248, 248, 248) if fill else pdf.set_fill_color(255, 255, 255)
             for val in row:
-                pdf.cell(col_width, 8, str(val), 1, 0, 'C')
+                text = str(val) if pd.notnull(val) else ""
+                pdf.cell(col_width, 9, text, 1, 0, 'C', fill=True)
             pdf.ln()
-    return pdf.output(dest='S').encode('latin-1', errors='replace')
+            fill = not fill
+    return pdf.output(dest='S').encode('latin-1')
 
 # --- 3. BULK UPLOAD LOGIC ---
 def handle_bulk_upload():
     st.sidebar.markdown("---")
-    st.sidebar.subheader("📥 Excel Data Import")
+    st.sidebar.subheader("📂 Excel Data Import")
     upload_type = st.sidebar.selectbox("Category", ["Classes", "Student Performance", "Teachers"], key="upload_sel")
-    uploaded_file = st.sidebar.file_uploader(f"Choose {upload_type} File", type=["xlsx"])
+    uploaded_file = st.sidebar.file_uploader(f"Choose {upload_type} Excel File", type=["xlsx"], key="file_up")
 
     if uploaded_file is not None:
         if st.sidebar.button(f"Confirm Import: {upload_type}"):
             try:
-                df = pd.read_excel(uploaded_file).fillna(0)
+                df = pd.read_excel(uploaded_file).fillna('')
                 df.columns = [str(c).strip() for c in df.columns]
                 
                 if upload_type == "Classes":
@@ -91,31 +94,30 @@ def handle_bulk_upload():
                         key = f"{row['Grade']}-{row['Section']}"
                         subs = [s.strip() for s in str(row['Subjects']).split(",")]
                         st.session_state.data_store["Grades_Config"][key] = subs
-                
                 elif upload_type == "Student Performance":
+                    for col in ['A', 'B', 'C', 'D']:
+                        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
                     for _, row in df.iterrows():
-                        # Ensure numeric types for calculation
-                        ga, gb, gc, gd = int(row['A']), int(row['B']), int(row['C']), int(row['D'])
-                        p_score = calculate_predictive_score(ga, gb, gc, gd)
+                        p_score = calculate_predictive_score(int(row['A']), int(row['B']), int(row['C']), int(row['D']))
                         st.session_state.data_store["A"].append({
                             "Class": str(row['Class']), "Subject": str(row['Subject']),
-                            "A": ga, "B": gb, "C": gc, "D": gd,
-                            "Total": ga+gb+gc+gd, "Predictive Score": p_score
+                            "A": int(row['A']), "B": int(row['B']), "C": int(row['C']), "D": int(row['D']),
+                            "Total": int(row['A']+row['B']+row['C']+row['D']),
+                            "Predictive Score": p_score
                         })
-                
                 elif upload_type == "Teachers":
                     for _, row in df.iterrows():
                         st.session_state.data_store["B"].append({
-                            "Name": str(row['Name']), "Expertise": str(row['Expertise']), "Success": int(row['Success'])
+                            "Name": row['Name'], "Expertise": row['Expertise'], "Success": row['Success']
                         })
-                st.sidebar.success("Imported!")
+                st.sidebar.success("Data Imported Successfully!")
                 st.rerun()
             except Exception as e:
                 st.sidebar.error(f"Error: {e}")
 
 # --- 4. NAVIGATION & UI ---
 if not st.session_state.authenticated:
-    st.title("🔒 Secure Access")
+    st.title("🔐 Secure Access")
     key_input = st.text_input("Enter System Key", type="password")
     if st.button("Authenticate"):
         if key_input == ACTIVATION_KEY:
@@ -125,7 +127,7 @@ if not st.session_state.authenticated:
 
 elif not st.session_state.setup_complete:
     handle_bulk_upload()
-    st.title("🏫 Institution Setup")
+    st.title("⚙️ Institution Setup")
     st.session_state.data_store["School_Name"] = st.text_input("School Name", "Global International Academy")
     
     st.subheader("Manual Class Configuration")
@@ -153,7 +155,7 @@ else:
 
     display_key = None
     if nav == "Student Performance (A)":
-        st.header("📊 Performance & Prediction")
+        st.header("📊 Performance Records & Prediction")
         display_key = "A"
         class_list = list(st.session_state.data_store["Grades_Config"].keys())
         if class_list:
@@ -166,8 +168,10 @@ else:
                     if st.form_submit_button("Save & Calculate Score"):
                         p_score = calculate_predictive_score(ga, gb, gc, gd)
                         st.session_state.data_store["A"].append({
-                            "Class": sel_class, "Subject": sel_sub, "A": ga, "B": gb, "C": gc, "D": gd, 
-                            "Total": ga+gb+gc+gd, "Predictive Score": p_score
+                            "Class": sel_class, "Subject": sel_sub, 
+                            "A": ga, "B": gb, "C": gc, "D": gd, 
+                            "Total": ga+gb+gc+gd,
+                            "Predictive Score": p_score
                         })
                         st.rerun()
 
@@ -185,40 +189,45 @@ else:
                 st.rerun()
 
     elif nav == "Efficiency Mapping (C)":
-        st.header("🎯 Strategic Deployment")
+        st.header("🎯 Strategic Deployment & Swapping Logic")
         display_key = "C"
         if st.session_state.data_store["A"] and st.session_state.data_store["B"]:
             options = [f"{x['Class']} | {x['Subject']}" for x in st.session_state.data_store["A"]]
             sel = st.selectbox("Analyze Needs", options)
             parts = sel.split(" | ")
             
-            # Find the performance data for selected class
+            # Find the selected class's current predictive score
             class_data = next((x for x in st.session_state.data_store["A"] if x['Class'] == parts[0] and x['Subject'] == parts[1]), None)
+            
             matches = [t for t in st.session_state.data_store["B"] if t['Expertise'] == parts[1]]
             
             if matches and class_data:
                 best_t = sorted(matches, key=lambda x: x['Success'], reverse=True)[0]
                 
+                # Visual Feedback for Predictive Score
                 col1, col2 = st.columns(2)
-                col1.metric("Current Pred. Score", f"{class_data['Predictive Score']}%")
-                col2.metric("Teacher Capability", f"{best_t['Success']}%", f"{round(best_t['Success'] - class_data['Predictive Score'], 2)}% Potential")
+                col1.metric("Current Predictive Score", f"{class_data['Predictive Score']}%")
+                col2.metric("Target (Teacher Rating)", f"{best_t['Success']}%", f"{best_t['Success'] - class_data['Predictive Score']}% Improvement")
 
                 if class_data['Predictive Score'] < 50:
-                    st.error("⚠️ HIGH RISK: Immediate faculty intervention recommended.")
+                    st.error("⚠️ HIGH RISK: This class requires immediate teacher swapping.")
                 
-                st.info(f"Recommended Faculty: **{best_t['Name']}**")
+                st.info(f"Recommended Deployment: **{best_t['Name']}**")
                 
                 if st.button("Authorize Allocation"):
                     st.session_state.data_store["C"].append({
+                        "Institution": st.session_state.data_store["School_Name"],
                         "Class": parts[0], "Subject": parts[1],
-                        "Teacher": best_t['Name'], "Score At Deployment": class_data['Predictive Score'], "Status": "DEPLOYED"
+                        "Teacher": best_t['Name'], 
+                        "Current Score": class_data['Predictive Score'],
+                        "Status": "DEPLOYED"
                     })
-                    st.success("Allocation Logged.")
+                    st.success("Allocation Authorized and Logged.")
                     st.rerun()
 
-    # Shared Table Display and PDF Export
     if display_key and st.session_state.data_store[display_key]:
         st.divider()
+        st.subheader(f"📋 Record Data: {nav}")
         df_view = pd.DataFrame(st.session_state.data_store[display_key])
         st.dataframe(df_view, use_container_width=True)
         c1, c2 = st.columns(2)

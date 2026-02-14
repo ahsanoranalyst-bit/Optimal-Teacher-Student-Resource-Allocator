@@ -1,5 +1,3 @@
-
-
 import streamlit as st
 import pandas as pd
 from fpdf import FPDF
@@ -51,7 +49,6 @@ class SchoolPDF(FPDF):
 def create_pdf(data, title):
     pdf = SchoolPDF()
     pdf.add_page()
-    # FIX: Ensure no None values enter the PDF
     df = pd.DataFrame(data).fillna('')
     
     if "Institution" in df.columns:
@@ -65,13 +62,9 @@ def create_pdf(data, title):
     pdf.ln(5)
     
     if not df.empty:
-        column_widths = {
-            "Institution": 55, "Class": 25, "Subject": 20,
-            "Teacher": 30, "Current Score": 30, "Status": 30
-        }
+        column_widths = {"Institution": 55, "Class": 25, "Subject": 20, "Teacher": 30, "Current Score": 30, "Status": 30}
         default_w = 190 / len(df.columns)
 
-        # Header Row
         pdf.set_font('Arial', 'B', 8)
         pdf.set_fill_color(230, 235, 245)
         for col in df.columns:
@@ -79,14 +72,12 @@ def create_pdf(data, title):
             pdf.cell(w, 10, str(col), 1, 0, 'C', fill=True)
         pdf.ln()
         
-        # Data Rows
         pdf.set_font('Arial', '', 8)
         fill = False
         for _, row in df.iterrows():
             pdf.set_fill_color(248, 248, 248) if fill else pdf.set_fill_color(255, 255, 255)
             for col in df.columns:
-                # FIX: Explicit check for None or NaN
-                val = str(row[col]) if pd.notnull(row[col]) else ""
+                val = str(row[col]) if pd.notnull(row[col]) and str(row[col]) != 'None' else ""
                 w = column_widths.get(col, default_w)
                 pdf.cell(w, 9, val, 1, 0, 'C', fill=True)
             pdf.ln()
@@ -94,45 +85,62 @@ def create_pdf(data, title):
             
     return pdf.output(dest='S').encode('latin-1')
 
-# --- 3. BULK UPLOAD LOGIC ---
+# --- 3. BULK UPLOAD LOGIC (MULTI-FILE SYNC) ---
 def handle_bulk_upload():
     st.sidebar.markdown("---")
-    st.sidebar.subheader("📂 Excel Data Import")
-    upload_type = st.sidebar.selectbox("Category", ["Classes", "Student Performance", "Teachers"], key="upload_sel")
-    uploaded_file = st.sidebar.file_uploader(f"Choose {upload_type} Excel File", type=["xlsx"], key="file_up")
+    st.sidebar.subheader("📂 Bulk Data Import Center")
+    
+    # Live Status Trackers
+    s1 = "✅" if st.session_state.data_store["Grades_Config"] else "❌"
+    s2 = "✅" if st.session_state.data_store["A"] else "❌"
+    s3 = "✅" if st.session_state.data_store["B"] else "❌"
+    
+    st.sidebar.info(f"Status: Classes {s1} | Students {s2} | Teachers {s3}")
 
-    if uploaded_file is not None:
-        if st.sidebar.button(f"Confirm Import: {upload_type}"):
-            try:
-                # FIX: fillna('') right after reading
-                df = pd.read_excel(uploaded_file).fillna('')
-                df.columns = [str(c).strip() for c in df.columns]
-                
-                if upload_type == "Classes":
-                    for _, row in df.iterrows():
-                        key = f"{row['Grade']}-{row['Section']}"
-                        subs = [s.strip() for s in str(row['Subjects']).split(",")]
-                        st.session_state.data_store["Grades_Config"][key] = subs
-                elif upload_type == "Student Performance":
-                    for col in ['A', 'B', 'C', 'D']:
-                        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-                    for _, row in df.iterrows():
-                        p_score = calculate_predictive_score(int(row['A']), int(row['B']), int(row['C']), int(row['D']))
-                        st.session_state.data_store["A"].append({
-                            "Class": str(row['Class']), "Subject": str(row['Subject']),
-                            "A": int(row['A']), "B": int(row['B']), "C": int(row['C']), "D": int(row['D']),
-                            "Total": int(row['A']+row['B']+row['C']+row['D']),
-                            "Predictive Score": p_score
-                        })
-                elif upload_type == "Teachers":
-                    for _, row in df.iterrows():
-                        st.session_state.data_store["B"].append({
-                            "Name": row['Name'], "Expertise": row['Expertise'], "Success": row['Success']
-                        })
-                st.sidebar.success("Data Imported Successfully!")
-                st.rerun()
-            except Exception as e:
-                st.sidebar.error(f"Error: {e}")
+    # File 1: Classes
+    up1 = st.sidebar.file_uploader("1. Classes Excel", type=["xlsx"], key="up_cls")
+    if up1 and st.sidebar.button("Import Classes"):
+        try:
+            df = pd.read_excel(up1).fillna('')
+            for _, row in df.iterrows():
+                key = f"{row['Grade']}-{row['Section']}"
+                st.session_state.data_store["Grades_Config"][key] = [s.strip() for s in str(row['Subjects']).split(",")]
+            st.sidebar.success("Classes Loaded!")
+            st.rerun()
+        except Exception as e: st.sidebar.error(f"Error: {e}")
+
+    # File 2: Student Performance
+    up2 = st.sidebar.file_uploader("2. Student Performance Excel", type=["xlsx"], key="up_perf")
+    if up2 and st.sidebar.button("Import Performance"):
+        try:
+            df = pd.read_excel(up2).fillna('')
+            for col in ['A', 'B', 'C', 'D']: df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+            for _, row in df.iterrows():
+                p_score = calculate_predictive_score(int(row['A']), int(row['B']), int(row['C']), int(row['D']))
+                st.session_state.data_store["A"].append({
+                    "Class": str(row['Class']), "Subject": str(row['Subject']),
+                    "A": int(row['A']), "B": int(row['B']), "C": int(row['C']), "D": int(row['D']),
+                    "Total": int(row['A']+row['B']+row['C']+row['D']),
+                    "Predictive Score": p_score # 5th Point Requirement
+                })
+            st.sidebar.success("Performance Loaded!")
+            st.rerun()
+        except Exception as e: st.sidebar.error(f"Error: {e}")
+
+    # File 3: Teacher Experts
+    up3 = st.sidebar.file_uploader("3. Teacher Experts Excel", type=["xlsx"], key="up_teach")
+    if up3 and st.sidebar.button("Import Teachers"):
+        try:
+            df = pd.read_excel(up3).fillna('')
+            for _, row in df.iterrows():
+                st.session_state.data_store["B"].append({"Name": row['Name'], "Expertise": row['Expertise'], "Success": row['Success']})
+            st.sidebar.success("Teachers Loaded!")
+            st.rerun()
+        except Exception as e: st.sidebar.error(f"Error: {e}")
+
+    if st.sidebar.button("🧹 Reset All Data"):
+        st.session_state.data_store = {"Grades_Config": {}, "A": [], "B": [], "C": [], "School_Name": "Global International Academy"}
+        st.rerun()
 
 # --- 4. NAVIGATION & UI ---
 if not st.session_state.authenticated:
@@ -149,23 +157,12 @@ elif not st.session_state.setup_complete:
     st.title("⚙️ Institution Setup")
     st.session_state.data_store["School_Name"] = st.text_input("School Name", "Global International Academy")
     
-    st.subheader("Manual Class Configuration")
-    c1, c2 = st.columns(2)
-    g_name = c1.selectbox("Grade", [f"Grade {i}" for i in range(1, 13)])
-    s_name = c2.text_input("Section")
-    sub_input = st.text_area("Subjects (comma separated)", "Math, English, Science")
-    
-    if st.button("Save Class"):
-        if s_name:
-            full_key = f"{g_name}-{s_name}"
-            subjects = [s.strip() for s in sub_input.split(",") if s.strip()]
-            st.session_state.data_store["Grades_Config"][full_key] = subjects
-            st.success(f"Added {full_key}")
-    
     if st.session_state.data_store["Grades_Config"]:
         if st.button("🚀 Enter Dashboard"):
             st.session_state.setup_complete = True
             st.rerun()
+    else:
+        st.warning("Please upload the 'Classes' Excel file in the sidebar to continue.")
 
 else:
     st.title(f"🏫 {st.session_state.data_store['School_Name']}")
@@ -174,78 +171,40 @@ else:
 
     display_key = None
     if nav == "Student Performance (A)":
-        st.header("📊 Performance Records & Prediction")
+        st.header("📊 Performance Records")
         display_key = "A"
-        class_list = list(st.session_state.data_store["Grades_Config"].keys())
-        if class_list:
-            with st.expander("➕ Manual Entry"):
-                sel_class = st.selectbox("Class", class_list)
-                sel_sub = st.selectbox("Subject", st.session_state.data_store["Grades_Config"][sel_class])
-                with st.form("a_form"):
-                    c1,c2,c3,c4 = st.columns(4)
-                    ga,gb,gc,gd = c1.number_input("A",0), c2.number_input("B",0), c3.number_input("C",0), c4.number_input("D",0)
-                    if st.form_submit_button("Save & Calculate Score"):
-                        p_score = calculate_predictive_score(ga, gb, gc, gd)
-                        st.session_state.data_store["A"].append({
-                            "Class": sel_class, "Subject": sel_sub,
-                            "A": ga, "B": gb, "C": gc, "D": gd,
-                            "Total": ga+gb+gc+gd,
-                            "Predictive Score": p_score
-                        })
-                        st.rerun()
-
+    
     elif nav == "Teacher Experts (B)":
         st.header("👨‍🏫 Faculty Specialization")
         display_key = "B"
-        all_subs = set()
-        for s_list in st.session_state.data_store["Grades_Config"].values(): all_subs.update(s_list)
-        with st.form("b_form"):
-            t_name = st.text_input("Teacher Name")
-            t_exp = st.selectbox("Expertise", list(all_subs) if all_subs else ["N/A"])
-            t_rate = st.slider("Historical Success %", 0, 100, 80)
-            if st.form_submit_button("Register"):
-                st.session_state.data_store["B"].append({"Name": t_name, "Expertise": t_exp, "Success": t_rate})
-                st.rerun()
 
     elif nav == "Efficiency Mapping (C)":
-        st.header("🎯 Strategic Deployment & Swapping Logic")
+        st.header("🎯 Strategic Deployment")
         display_key = "C"
         if st.session_state.data_store["A"] and st.session_state.data_store["B"]:
             options = [f"{x['Class']} | {x['Subject']}" for x in st.session_state.data_store["A"]]
             sel = st.selectbox("Analyze Needs", options)
             parts = sel.split(" | ")
-            
             class_data = next((x for x in st.session_state.data_store["A"] if x['Class'] == parts[0] and x['Subject'] == parts[1]), None)
             matches = [t for t in st.session_state.data_store["B"] if t['Expertise'] == parts[1]]
             
             if matches and class_data:
                 best_t = sorted(matches, key=lambda x: x['Success'], reverse=True)[0]
-                
                 col1, col2 = st.columns(2)
-                col1.metric("Current Predictive Score", f"{class_data['Predictive Score']}%")
-                col2.metric("Target (Teacher Rating)", f"{best_t['Success']}%", f"{best_t['Success'] - class_data['Predictive Score']}% Improvement")
-
-                if class_data['Predictive Score'] < 50:
-                    st.error("⚠️ HIGH RISK: This class requires immediate teacher swapping.")
-                
-                st.info(f"Recommended Deployment: **{best_t['Name']}**")
+                col1.metric("Current Score", f"{class_data['Predictive Score']}%")
+                col2.metric("Target (Teacher)", f"{best_t['Success']}%")
                 
                 if st.button("Authorize Allocation"):
-                    if "C" not in st.session_state.data_store: st.session_state.data_store["C"] = []
                     st.session_state.data_store["C"].append({
                         "Institution": st.session_state.data_store["School_Name"],
-                        "Class": parts[0], "Subject": parts[1],
-                        "Teacher": best_t['Name'],
-                        "Current Score": class_data['Predictive Score'],
-                        "Status": "DEPLOYED"
+                        "Class": parts[0], "Subject": parts[1], "Teacher": best_t['Name'],
+                        "Current Score": class_data['Predictive Score'], "Status": "DEPLOYED"
                     })
-                    st.success("Allocation Authorized and Logged.")
+                    st.success("Deployed!")
                     st.rerun()
 
     if display_key and st.session_state.data_store[display_key]:
         st.divider()
-        st.subheader(f"📋 Record Data: {nav}")
-        # FIX: Ensure DataFrame view has no None values
         df_view = pd.DataFrame(st.session_state.data_store[display_key]).fillna('')
         st.dataframe(df_view, use_container_width=True)
         

@@ -6,8 +6,10 @@ from datetime import datetime
 # --- 1. CORE INITIALIZATION ---
 ACTIVATION_KEY = "PAK-2026"
 
-if 'authenticated' not in st.session_state: st.session_state.authenticated = False
-if 'setup_complete' not in st.session_state: st.session_state.setup_complete = False
+if 'authenticated' not in st.session_state: 
+    st.session_state.authenticated = False
+if 'setup_complete' not in st.session_state: 
+    st.session_state.setup_complete = False
 if 'data_store' not in st.session_state:
     st.session_state.data_store = {
         "Grades_Config": {},
@@ -23,7 +25,7 @@ def calculate_predictive_score(a, b, c, d):
     score = ((a * 100) + (b * 75) + (c * 50) + (d * 25)) / total
     return round(score, 2)
 
-# --- 2. PROFESSIONAL PDF ENGINE (FIXED FOR INSTITUTION NAME) ---
+# --- 2. PROFESSIONAL PDF ENGINE ---
 class SchoolPDF(FPDF):
     def header(self):
         self.set_fill_color(31, 73, 125)
@@ -44,7 +46,6 @@ class SchoolPDF(FPDF):
         self.set_font('Arial', 'I', 8)
         self.set_text_color(120, 120, 120)
         self.cell(0, 10, "__________________________", 0, 1, 'R')
-        # Signature Source 
         self.cell(0, 5, "Authorized Signature & Official Stamp", 0, 1, 'R')
         # Date Source [cite: 6]
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
@@ -55,7 +56,7 @@ def create_pdf(data, title):
     pdf.add_page()
     df = pd.DataFrame(data)
     
-    # Force full institution name into the dataframe
+    # Force full institution name into the PDF column
     if "Institution" in df.columns:
         df["Institution"] = "Global International Academy"
 
@@ -68,7 +69,7 @@ def create_pdf(data, title):
     pdf.ln(5)
     
     if not df.empty:
-        # Optimized Column Widths to prevent truncation 
+        # Optimized Column Widths to prevent truncation
         column_widths = {
             "Institution": 55,
             "Class": 25,
@@ -148,7 +149,8 @@ if not st.session_state.authenticated:
         if key_input == ACTIVATION_KEY:
             st.session_state.authenticated = True
             st.rerun()
-        else: st.error("Invalid Key")
+        else: 
+            st.error("Invalid Key")
 
 elif not st.session_state.setup_complete:
     handle_bulk_upload()
@@ -189,7 +191,10 @@ else:
                 sel_sub = st.selectbox("Subject", st.session_state.data_store["Grades_Config"][sel_class])
                 with st.form("a_form"):
                     c1,c2,c3,c4 = st.columns(4)
-                    ga,gb,gc,gd = c1.number_input("A",0), c2.number_input("B",0), c3.number_input("C",0), c4.number_input("D",0)
+                    ga = c1.number_input("A", 0)
+                    gb = c2.number_input("B", 0)
+                    gc = c3.number_input("C", 0)
+                    gd = c4.number_input("D", 0)
                     if st.form_submit_button("Save & Calculate Score"):
                         p_score = calculate_predictive_score(ga, gb, gc, gd)
                         st.session_state.data_store["A"].append({
@@ -204,7 +209,8 @@ else:
         st.header("👨‍🏫 Faculty Specialization")
         display_key = "B"
         all_subs = set()
-        for s_list in st.session_state.data_store["Grades_Config"].values(): all_subs.update(s_list)
+        for s_list in st.session_state.data_store["Grades_Config"].values(): 
+            all_subs.update(s_list)
         with st.form("b_form"):
             t_name = st.text_input("Teacher Name")
             t_exp = st.selectbox("Expertise", list(all_subs) if all_subs else ["N/A"])
@@ -252,12 +258,15 @@ else:
         st.subheader(f"📋 Record Data: {nav}")
         df_view = pd.DataFrame(st.session_state.data_store[display_key])
         st.dataframe(df_view, use_container_width=True)
+        
         c1, c2 = st.columns(2)
         with c1:
-            row_idx = st.selectbox("Select row to delete", df_view.index)
-            if st.button("🗑️ Remove Record"):
-                st.session_state.data_store[display_key].pop(row_idx)
-                st.rerun()
+            if not df_view.empty:
+                row_idx = st.selectbox("Select row to delete", df_view.index)
+                if st.button("🗑️ Remove Record"):
+                    st.session_state.data_store[display_key].pop(row_idx)
+                    st.rerun()
         with c2:
-            pdf_bytes = create_pdf(st.session_state.data_store[display_key], nav)
-            st.download_button(f"📥 Download {nav} PDF", pdf_bytes, f"Report_{nav}.pdf")
+            if not df_view.empty:
+                pdf_bytes = create_pdf(st.session_state.data_store[display_key], nav)
+                st.download_button(f"📥 Download {nav} PDF", pdf_bytes, f"Report_{nav}.pdf")

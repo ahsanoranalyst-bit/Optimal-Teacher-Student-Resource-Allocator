@@ -19,6 +19,7 @@ if 'data_store' not in st.session_state:
 def calculate_predictive_score(a, b, c, d):
     total = a + b + c + d
     if total == 0: return 0
+    # Predictive Score as the 5th point logic
     score = ((a * 100) + (b * 75) + (c * 50) + (d * 25)) / total
     return round(score, 2)
 
@@ -90,13 +91,19 @@ def handle_bulk_upload():
                         })
                 elif upload_type == "Teachers":
                     for _, row in df.iterrows():
-                        st.session_state.data_store["B"].append({"Name": row['Name'], "Expertise": row['Expertise'], "Success": row['Success']})
+                        # Added Assigned Class logic here
+                        st.session_state.data_store["B"].append({
+                            "Name": row['Name'], 
+                            "Expertise": row['Expertise'], 
+                            "Success": row['Success'],
+                            "Assigned Class": str(row['Assigned Class'])
+                        })
                 st.sidebar.success("Import Successful!")
                 st.rerun()
             except Exception as e:
                 st.sidebar.error(f"Error: {e}")
 
-# --- 4. LOGIN INTERFACE ---
+# --- 4. MAIN INTERFACE ---
 if not st.session_state.authenticated:
     st.title("🔐 Secure Access")
     pwd = st.text_input("Enter Activation Key", type="password")
@@ -127,20 +134,11 @@ elif not st.session_state.setup_complete:
         if st.button("🚀 Enter Dashboard"):
             st.session_state.setup_complete = True
             st.rerun()
-
 else:
-    # --- SIDEBAR NAVIGATION ---
     st.sidebar.title("🎮 Dashboard Menu")
-    nav = st.sidebar.radio("Go To:", 
-                           ["Student Performance (A)", 
-                            "Teacher Experts (B)", 
-                            "Efficiency Mapping (C)", 
-                            "Teacher Portal"])
-    
+    nav = st.sidebar.radio("Go To:", ["Student Performance (A)", "Teacher Experts (B)", "Efficiency Mapping (C)", "Teacher Portal"])
     handle_bulk_upload()
 
-    # --- LOGOUT BUTTON (NEW) ---
-    st.sidebar.markdown("---")
     if st.sidebar.button("🔓 Logout"):
         st.session_state.authenticated = False
         st.session_state.setup_complete = False
@@ -148,11 +146,9 @@ else:
 
     st.title(f"🏫 {st.session_state.data_store['School_Name']}")
 
-    # --- SECTION A: STUDENT PERFORMANCE ---
     if nav == "Student Performance (A)":
         st.header("📊 Student Performance Records")
         class_list = list(st.session_state.data_store["Grades_Config"].keys())
-        
         with st.expander("➕ Add Manual Entry"):
             if class_list:
                 sel_class = st.selectbox("Select Class", class_list)
@@ -176,15 +172,16 @@ else:
                 st.session_state.data_store["A"].pop(idx)
                 st.rerun()
 
-    # --- SECTION B: TEACHER EXPERTS ---
     elif nav == "Teacher Experts (B)":
         st.header("👨‍🏫 Teacher Registry")
+        class_list = list(st.session_state.data_store["Grades_Config"].keys())
         with st.form("manual_t_form"):
             t_name = st.text_input("Name")
             t_exp = st.text_input("Expertise")
+            t_class = st.selectbox("Assigned Class", class_list) if class_list else st.text_input("Assigned Class")
             t_success = st.number_input("Success Rate", 0, 100)
             if st.form_submit_button("Register"):
-                st.session_state.data_store["B"].append({"Name": t_name, "Expertise": t_exp, "Success": t_success})
+                st.session_state.data_store["B"].append({"Name": t_name, "Expertise": t_exp, "Success": t_success, "Assigned Class": t_class})
                 st.rerun()
 
         if st.session_state.data_store["B"]:
@@ -195,13 +192,16 @@ else:
                 st.session_state.data_store["B"].pop(idx_b)
                 st.rerun()
 
-    # --- SECTION C: EFFICIENCY MAPPING ---
     elif nav == "Efficiency Mapping (C)":
-        st.header("🎯 Efficiency Mapping & Separate Reports")
+        st.header("🎯 Efficiency Mapping")
         if st.button("🔄 Auto-Map Teachers"):
             st.session_state.data_store["C"] = []
             for teacher in st.session_state.data_store["B"]:
-                relevant = [a for a in st.session_state.data_store["A"] if a['Subject'].lower() == teacher['Expertise'].lower()]
+                # Enhanced Logic: Matching by Subject AND Assigned Class
+                relevant = [a for a in st.session_state.data_store["A"] 
+                           if a['Subject'].lower() == teacher['Expertise'].lower() 
+                           and a['Class'] == teacher['Assigned Class']]
+                
                 if relevant:
                     for r in relevant:
                         status = "BEST TEACHER" if r['Predictive Score'] >= 70 else "IMPROVEMENT NEEDED"
@@ -211,10 +211,10 @@ else:
                         })
                 else:
                     st.session_state.data_store["C"].append({
-                        "Class": "N/A", "Subject": teacher['Expertise'], "Teacher": teacher['Name'], 
+                        "Class": teacher['Assigned Class'], "Subject": teacher['Expertise'], "Teacher": teacher['Name'], 
                         "Predictive Score": 0, "Status": "NO DATA"
                     })
-            st.success("Mapping Completed!")
+            st.success("Mapping Completed based on Class & Subject!")
 
         if st.session_state.data_store["C"]:
             df_c = pd.DataFrame(st.session_state.data_store["C"])
@@ -225,7 +225,6 @@ else:
             with col1: st.download_button("📥 Download Best PDF", create_pdf(best, "Best Teachers"), "Best.pdf")
             with col2: st.download_button("📥 Download Improvement PDF", create_pdf(improve, "Improvement"), "Improvement.pdf")
 
-    # --- SECTION D: TEACHER PORTAL ---
     elif nav == "Teacher Portal":
         st.header("📜 Individual Teacher Portal")
         if st.session_state.data_store["B"]:

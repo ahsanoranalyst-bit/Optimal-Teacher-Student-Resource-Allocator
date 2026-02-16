@@ -67,7 +67,38 @@ def create_pdf(data, title):
             pdf.ln()
     return pdf.output(dest='S').encode('latin-1')
 
-# --- 3. UI & NAVIGATION ---
+# --- 3. BULK UPLOAD LOGIC ---
+def handle_bulk_upload():
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📂 Excel Data Import")
+    upload_type = st.sidebar.selectbox("Category", ["Classes", "Student Performance", "Teachers"], key="upload_sel")
+    uploaded_file = st.sidebar.file_uploader(f"Choose {upload_type} Excel File", type=["xlsx"], key="file_up")
+
+    if uploaded_file is not None:
+        if st.sidebar.button(f"Confirm Import: {upload_type}"):
+            try:
+                df = pd.read_excel(uploaded_file).fillna('')
+                if upload_type == "Classes":
+                    for _, row in df.iterrows():
+                        key = f"{row['Grade']}-{row['Section']}"
+                        st.session_state.data_store["Grades_Config"][key] = [s.strip() for s in str(row['Subjects']).split(",")]
+                elif upload_type == "Student Performance":
+                    for _, row in df.iterrows():
+                        p_score = calculate_predictive_score(int(row['A']), int(row['B']), int(row['C']), int(row['D']))
+                        st.session_state.data_store["A"].append({
+                            "Class": str(row['Class']), "Subject": str(row['Subject']),
+                            "A": int(row['A']), "B": int(row['B']), "C": int(row['C']), "D": int(row['D']),
+                            "Predictive Score": p_score
+                        })
+                elif upload_type == "Teachers":
+                    for _, row in df.iterrows():
+                        st.session_state.data_store["B"].append({"Name": row['Name'], "Expertise": row['Expertise'], "Success": row['Success']})
+                st.sidebar.success("Import Successful!")
+                st.rerun()
+            except Exception as e:
+                st.sidebar.error(f"Error: {e}")
+
+# --- 4. NAVIGATION & UI ---
 if not st.session_state.authenticated:
     st.title("🔐 Secure Access")
     pwd = st.text_input("Enter Key", type="password")
@@ -77,7 +108,8 @@ if not st.session_state.authenticated:
             st.rerun()
 
 elif not st.session_state.setup_complete:
-    st.title("⚙️ Initial Setup")
+    handle_bulk_upload()
+    st.title("⚙️ Institution Setup")
     st.session_state.data_store["School_Name"] = st.text_input("School Name", "Global International Academy")
     
     st.subheader("Manual Class Configuration")
@@ -99,10 +131,12 @@ elif not st.session_state.setup_complete:
             st.rerun()
 
 else:
-    nav = st.sidebar.selectbox("Go to", ["Performance (A)", "Teachers (B)", "Mapping (C)", "Teacher Portal"])
+    st.title(f"🏫 {st.session_state.data_store['School_Name']}")
+    handle_bulk_upload()
+    nav = st.sidebar.selectbox("Main Menu", ["Student Performance (A)", "Teacher Experts (B)", "Efficiency Mapping (C)", "Teacher Portal"])
 
-    if nav == "Performance (A)":
-        st.header("📊 Student Performance")
+    if nav == "Student Performance (A)":
+        st.header("📊 Performance Records")
         class_list = list(st.session_state.data_store["Grades_Config"].keys())
         if class_list:
             with st.expander("➕ Manual Entry"):
@@ -111,7 +145,7 @@ else:
                 with st.form("a_form"):
                     c1,c2,c3,c4 = st.columns(4)
                     ga,gb,gc,gd = c1.number_input("A",0), c2.number_input("B",0), c3.number_input("C",0), c4.number_input("D",0)
-                    if st.form_submit_button("Save Record"):
+                    if st.form_submit_button("Save"):
                         score = calculate_predictive_score(ga, gb, gc, gd)
                         st.session_state.data_store["A"].append({
                             "Class": sel_class, "Subject": sel_sub,
@@ -120,28 +154,24 @@ else:
                         st.rerun()
         st.dataframe(pd.DataFrame(st.session_state.data_store["A"]))
 
-    elif nav == "Teachers (B)":
+    elif nav == "Teacher Experts (B)":
         st.header("👨‍🏫 Teacher Registration")
         with st.form("t_form"):
             t_name = st.text_input("Teacher Name")
-            t_exp = st.text_input("Expertise (Subject)")
+            t_exp = st.text_input("Expertise")
             t_success = st.number_input("Success Rate", 0, 100)
-            if st.form_submit_button("Register Teacher"):
+            if st.form_submit_button("Register"):
                 st.session_state.data_store["B"].append({"Name": t_name, "Expertise": t_exp, "Success": t_success})
                 st.rerun()
         st.dataframe(pd.DataFrame(st.session_state.data_store["B"]))
 
     elif nav == "Mapping (C)":
         st.header("🎯 Efficiency Mapping")
-        
-        # Auto-Mapping Logic
-        if st.button("🔄 Auto-Map Classes"):
+        if st.button("🔄 Auto-Map All Classes"):
             st.session_state.data_store["C"] = []
             for record in st.session_state.data_store["A"]:
-                # تلاش کریں کہ اس سبجیکٹ کے کتنے ٹیچر ہیں
                 matches = [t for t in st.session_state.data_store["B"] if t['Expertise'].lower() == record['Subject'].lower()]
                 if matches:
-                    # بہترین ٹیچر منتخب کریں
                     best_t = sorted(matches, key=lambda x: x['Success'], reverse=True)[0]
                     status = "BEST TEACHER" if record['Predictive Score'] >= 70 else "IMPROVEMENT NEEDED"
                     st.session_state.data_store["C"].append({
@@ -154,23 +184,20 @@ else:
             df_c = pd.DataFrame(st.session_state.data_store["C"])
             best_df = df_c[df_c["Status"] == "BEST TEACHER"]
             improve_df = df_c[df_c["Status"] == "IMPROVEMENT NEEDED"]
-
             col1, col2 = st.columns(2)
             with col1:
                 st.success(f"Best: {len(best_df)}")
-                if not best_df.empty:
-                    st.download_button("Download Best PDF", create_pdf(best_df, "BEST TEACHERS"), "Best.pdf")
+                if not best_df.empty: st.download_button("Download Best PDF", create_pdf(best_df, "BEST"), "Best.pdf")
             with col2:
                 st.warning(f"Improvement: {len(improve_df)}")
-                if not improve_df.empty:
-                    st.download_button("Download Improvement PDF", create_pdf(improve_df, "IMPROVEMENT"), "Improvement.pdf")
+                if not improve_df.empty: st.download_button("Download Improvement PDF", create_pdf(improve_df, "IMPROVE"), "Improve.pdf")
             st.dataframe(df_c)
 
     elif nav == "Teacher Portal":
-        st.header("📜 Teacher Performance Report")
+        st.header("📜 Teacher Reports")
         names = list(set([t['Name'] for t in st.session_state.data_store["B"]]))
         selected = st.selectbox("Select Teacher", names)
         report = [x for x in st.session_state.data_store["C"] if x['Teacher'] == selected]
         if report:
             st.dataframe(pd.DataFrame(report))
-            st.download_button("Download Report PDF", create_pdf(report, selected), f"{selected}_Report.pdf")
+            st.download_button("Download PDF", create_pdf(report, selected), f"{selected}.pdf")

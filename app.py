@@ -4,7 +4,6 @@ from fpdf import FPDF
 from datetime import datetime
 
 # --- 1. CORE INITIALIZATION ---
-# Activation key remains as per your requirement
 ACTIVATION_KEY = "PAK-2026"
 
 if 'authenticated' not in st.session_state: st.session_state.authenticated = False
@@ -60,9 +59,9 @@ def create_pdf(data, title):
     pdf.ln(5)
     
     if not df.empty:
-        # Define columns to display in PDF
+        # Optimized Column Widths for English Labels
+        column_widths = {"Class": 25, "Subject": 35, "Teacher": 45, "Current Score": 35, "Status": 50}
         display_cols = ["Class", "Subject", "Teacher", "Current Score", "Status"]
-        column_widths = {"Class": 30, "Subject": 40, "Teacher": 50, "Current Score": 35, "Status": 35}
         
         # Header Row
         pdf.set_font('Arial', 'B', 9)
@@ -77,11 +76,20 @@ def create_pdf(data, title):
         fill = False
         for _, row in df.iterrows():
             pdf.set_fill_color(248, 248, 248) if fill else pdf.set_fill_color(255, 255, 255)
+            
+            x_before = pdf.get_x()
+            y_before = pdf.get_y()
+            row_height = 10 
+
             for col in display_cols:
                 if col in df.columns:
                     val = str(row[col])
-                    pdf.cell(column_widths[col], 9, val, 1, 0, 'C', fill=True)
-            pdf.ln()
+                    # Using multi_cell to prevent text from crossing column borders
+                    pdf.multi_cell(column_widths[col], row_height, val, 1, 'C', fill=True)
+                    pdf.set_xy(x_before + column_widths[col], y_before)
+                    x_before += column_widths[col]
+            
+            pdf.ln(row_height)
             fill = not fill
             
     return pdf.output(dest='S').encode('latin-1')
@@ -206,7 +214,6 @@ else:
         st.header("🎯 Strategic Deployment (Grade-wise Lists)")
         
         if st.session_state.data_store["A"] and st.session_state.data_store["B"]:
-            # --- ALLOCATION SECTION ---
             with st.expander("🆕 Create New Allocation"):
                 options = [f"{x['Class']} | {x['Subject']}" for x in st.session_state.data_store["A"]]
                 sel = st.selectbox("Analyze Class Need", options)
@@ -221,7 +228,6 @@ else:
                     st.write(f"Current Class Predictive Score: **{class_data['Predictive Score']}%**")
                     
                     if st.button("Authorize Deployment"):
-                        # Logic: Score < 60 means the class/teacher needs improvement
                         status = "BEST PERFORMER" if class_data['Predictive Score'] >= 60 else "NEEDS IMPROVEMENT"
                         st.session_state.data_store["C"].append({
                             "Class": parts[0], 
@@ -233,10 +239,8 @@ else:
                         st.success("Deployment Logged.")
                         st.rerun()
 
-            # --- DUAL REPORT GENERATION ---
             if st.session_state.data_store["C"]:
                 mapping_df = pd.DataFrame(st.session_state.data_store["C"])
-                # Sort by Class (Grade-wise)
                 mapping_df = mapping_df.sort_values(by="Class")
                 
                 improvement_list = mapping_df[mapping_df['Status'] == "NEEDS IMPROVEMENT"].to_dict('records')

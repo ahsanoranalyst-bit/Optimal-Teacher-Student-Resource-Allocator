@@ -1,5 +1,6 @@
 
 
+
 import streamlit as st
 import pandas as pd
 from fpdf import FPDF
@@ -135,6 +136,7 @@ else:
     handle_bulk_upload()
     nav = st.sidebar.selectbox("Main Menu", ["Student Performance (A)", "Teacher Experts (B)", "Efficiency Mapping (C)", "Teacher Portal"])
 
+    # --- SECTION A: PERFORMANCE ---
     if nav == "Student Performance (A)":
         st.header("📊 Performance Records")
         class_list = list(st.session_state.data_store["Grades_Config"].keys())
@@ -152,21 +154,37 @@ else:
                             "A": ga, "B": gb, "C": gc, "D": gd, "Predictive Score": score
                         })
                         st.rerun()
-        st.dataframe(pd.DataFrame(st.session_state.data_store["A"]))
+        
+        if st.session_state.data_store["A"]:
+            df_a = pd.DataFrame(st.session_state.data_store["A"])
+            st.dataframe(df_a)
+            idx_to_del = st.selectbox("Select Record ID to Delete", df_a.index)
+            if st.button("🗑️ Delete Selected Record"):
+                st.session_state.data_store["A"].pop(idx_to_del)
+                st.rerun()
 
+    # --- SECTION B: TEACHERS ---
     elif nav == "Teacher Experts (B)":
         st.header("👨‍🏫 Teacher Registration")
         with st.form("t_form"):
             t_name = st.text_input("Teacher Name")
-            t_exp = st.text_input("Expertise")
-            t_success = st.number_input("Success Rate", 0, 100)
+            t_exp = st.text_input("Expertise (e.g. Math)")
+            t_success = st.number_input("Success Rate (%)", 0, 100)
             if st.form_submit_button("Register"):
                 st.session_state.data_store["B"].append({"Name": t_name, "Expertise": t_exp, "Success": t_success})
                 st.rerun()
-        st.dataframe(pd.DataFrame(st.session_state.data_store["B"]))
+        
+        if st.session_state.data_store["B"]:
+            df_b = pd.DataFrame(st.session_state.data_store["B"])
+            st.dataframe(df_b)
+            idx_to_del_b = st.selectbox("Select Teacher ID to Delete", df_b.index)
+            if st.button("🗑️ Delete Teacher"):
+                st.session_state.data_store["B"].pop(idx_to_del_b)
+                st.rerun()
 
-    elif nav == "Mapping (C)":
-        st.header("🎯 Efficiency Mapping")
+    # --- SECTION C: MAPPING & PDF ---
+    elif nav == "Efficiency Mapping (C)":
+        st.header("🎯 Efficiency Mapping & Reports")
         if st.button("🔄 Auto-Map All Classes"):
             st.session_state.data_store["C"] = []
             for record in st.session_state.data_store["A"]:
@@ -178,26 +196,38 @@ else:
                         "Class": record['Class'], "Subject": record['Subject'], 
                         "Teacher": best_t['Name'], "Score": record['Predictive Score'], "Status": status
                     })
-            st.rerun()
+            st.success("Mapping Processed!")
 
         if st.session_state.data_store["C"]:
             df_c = pd.DataFrame(st.session_state.data_store["C"])
+            st.dataframe(df_c)
+            
             best_df = df_c[df_c["Status"] == "BEST TEACHER"]
             improve_df = df_c[df_c["Status"] == "IMPROVEMENT NEEDED"]
+            
             col1, col2 = st.columns(2)
             with col1:
-                st.success(f"Best: {len(best_df)}")
-                if not best_df.empty: st.download_button("Download Best PDF", create_pdf(best_df, "BEST"), "Best.pdf")
+                if not best_df.empty:
+                    st.success(f"Best Found: {len(best_df)}")
+                    st.download_button("📥 Download Best PDF", create_pdf(best_df, "BEST TEACHERS"), "Best_Performers.pdf")
             with col2:
-                st.warning(f"Improvement: {len(improve_df)}")
-                if not improve_df.empty: st.download_button("Download Improvement PDF", create_pdf(improve_df, "IMPROVE"), "Improve.pdf")
-            st.dataframe(df_c)
+                if not improve_df.empty:
+                    st.warning(f"Improvement Needed: {len(improve_df)}")
+                    st.download_button("📥 Download Improvement PDF", create_pdf(improve_df, "IMPROVEMENT"), "Improvement_List.pdf")
 
+    # --- SECTION D: TEACHER PORTAL ---
     elif nav == "Teacher Portal":
-        st.header("📜 Teacher Reports")
-        names = list(set([t['Name'] for t in st.session_state.data_store["B"]]))
-        selected = st.selectbox("Select Teacher", names)
-        report = [x for x in st.session_state.data_store["C"] if x['Teacher'] == selected]
-        if report:
-            st.dataframe(pd.DataFrame(report))
-            st.download_button("Download PDF", create_pdf(report, selected), f"{selected}.pdf")
+        st.header("📜 Teacher Personal Portal")
+        if st.session_state.data_store["B"]:
+            names = list(set([t['Name'] for t in st.session_state.data_store["B"]]))
+            selected = st.selectbox("Select Teacher to View Reports", names)
+            
+            # Find classes assigned to this teacher in Mapping C
+            report_data = [x for x in st.session_state.data_store["C"] if x['Teacher'] == selected]
+            
+            if report_data:
+                st.subheader(f"Performance Data for: {selected}")
+                st.dataframe(pd.DataFrame(report_data))
+                st.download_button(f"📥 Download {selected}'s PDF", create_pdf(report_data, f"REPORT: {selected}"), f"{selected}_Report.pdf")
+            else:
+                st.info("No mapping data found for this teacher. Please run 'Auto-Map' in Section C first.")

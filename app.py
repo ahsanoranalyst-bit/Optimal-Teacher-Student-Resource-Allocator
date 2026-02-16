@@ -67,38 +67,56 @@ def create_pdf(data, title):
             pdf.ln()
     return pdf.output(dest='S').encode('latin-1')
 
-# --- 3. BULK UPLOAD LOGIC ---
+# --- 3. UPDATED BULK UPLOAD LOGIC (ALL-IN-ONE + SEPARATE) ---
 def handle_bulk_upload():
     st.sidebar.markdown("---")
-    st.sidebar.subheader("📂 Excel Data Import")
-    upload_type = st.sidebar.selectbox("Category", ["Classes", "Student Performance", "Teachers"], key="upload_sel")
-    uploaded_file = st.sidebar.file_uploader(f"Choose {upload_type} Excel File", type=["xlsx"], key="file_up")
-
-    if uploaded_file is not None:
-        if st.sidebar.button(f"Confirm Import: {upload_type}"):
+    st.sidebar.subheader("📂 Data Import Center")
+    
+    # Selection for Single vs All
+    upload_mode = st.sidebar.radio("Upload Mode", ["Single Category", "Full Database (Multi-Sheet)"])
+    
+    if upload_mode == "Single Category":
+        upload_type = st.sidebar.selectbox("Category", ["Classes", "Student Performance", "Teachers"], key="upload_sel")
+        uploaded_file = st.sidebar.file_uploader(f"Choose {upload_type} Excel File", type=["xlsx"], key="file_up_single")
+        
+        if uploaded_file and st.sidebar.button("Confirm Single Import"):
             try:
                 df = pd.read_excel(uploaded_file).fillna('')
-                if upload_type == "Classes":
-                    for _, row in df.iterrows():
-                        key = f"{row['Grade']}-{row['Section']}"
-                        st.session_state.data_store["Grades_Config"][key] = [s.strip() for s in str(row['Subjects']).split(",")]
-                elif upload_type == "Student Performance":
-                    for _, row in df.iterrows():
-                        p_score = calculate_predictive_score(int(row['A']), int(row['B']), int(row['C']), int(row['D']))
-                        st.session_state.data_store["A"].append({
-                            "Class": str(row['Class']), "Subject": str(row['Subject']),
-                            "A": int(row['A']), "B": int(row['B']), "C": int(row['C']), "D": int(row['D']),
-                            "Predictive Score": p_score
-                        })
-                elif upload_type == "Teachers":
-                    for _, row in df.iterrows():
-                        st.session_state.data_store["B"].append({"Name": row['Name'], "Expertise": row['Expertise'], "Success": row['Success']})
-                st.sidebar.success("Import Successful!")
+                process_data(upload_type, df)
+                st.sidebar.success("Imported Successfully!")
                 st.rerun()
-            except Exception as e:
-                st.sidebar.error(f"Error: {e}")
+            except Exception as e: st.sidebar.error(f"Error: {e}")
+            
+    else:
+        uploaded_file = st.sidebar.file_uploader("Upload One File with All Sheets", type=["xlsx"], key="file_up_bulk")
+        if uploaded_file and st.sidebar.button("Execute Full Sync"):
+            try:
+                xls = pd.ExcelFile(uploaded_file)
+                if 'Classes' in xls.sheet_names: process_data("Classes", pd.read_excel(xls, 'Classes').fillna(''))
+                if 'Students' in xls.sheet_names: process_data("Student Performance", pd.read_excel(xls, 'Students').fillna(''))
+                if 'Teachers' in xls.sheet_names: process_data("Teachers", pd.read_excel(xls, 'Teachers').fillna(''))
+                st.sidebar.success("All Sheets Synchronized!")
+                st.rerun()
+            except Exception as e: st.sidebar.error(f"Error: {e}")
 
-# --- 4. LOGIN INTERFACE ---
+def process_data(category, df):
+    if category == "Classes":
+        for _, row in df.iterrows():
+            key = f"{row['Grade']}-{row['Section']}"
+            st.session_state.data_store["Grades_Config"][key] = [s.strip() for s in str(row['Subjects']).split(",")]
+    elif category == "Student Performance":
+        for _, row in df.iterrows():
+            p_score = calculate_predictive_score(int(row['A']), int(row['B']), int(row['C']), int(row['D']))
+            st.session_state.data_store["A"].append({
+                "Class": str(row['Class']), "Subject": str(row['Subject']),
+                "A": int(row['A']), "B": int(row['B']), "C": int(row['C']), "D": int(row['D']),
+                "Predictive Score": p_score
+            })
+    elif category == "Teachers":
+        for _, row in df.iterrows():
+            st.session_state.data_store["B"].append({"Name": row['Name'], "Expertise": row['Expertise'], "Success": row['Success']})
+
+# --- 4. MAIN INTERFACE & NAVIGATION ---
 if not st.session_state.authenticated:
     st.title("🔐 Secure Access")
     pwd = st.text_input("Enter Activation Key", type="password")
@@ -131,17 +149,12 @@ elif not st.session_state.setup_complete:
             st.rerun()
 
 else:
-    # --- SIDEBAR NAVIGATION ---
+    # Sidebar Navigation
     st.sidebar.title("🎮 Dashboard Menu")
-    nav = st.sidebar.radio("Go To:", 
-                           ["Student Performance (A)", 
-                            "Teacher Experts (B)", 
-                            "Efficiency Mapping (C)", 
-                            "Teacher Portal"])
-    
+    nav = st.sidebar.radio("Go To:", ["Student Performance (A)", "Teacher Experts (B)", "Efficiency Mapping (C)", "Teacher Portal"])
     handle_bulk_upload()
-
-    # --- LOGOUT BUTTON (NEW) ---
+    
+    # Logout Button
     st.sidebar.markdown("---")
     if st.sidebar.button("🔓 Logout"):
         st.session_state.authenticated = False
@@ -162,12 +175,9 @@ else:
                 with st.form("manual_a_form"):
                     c1,c2,c3,c4 = st.columns(4)
                     ga, gb, gc, gd = c1.number_input("A", 0), c2.number_input("B", 0), c3.number_input("C", 0), c4.number_input("D", 0)
-                    if st.form_submit_button("Save Record"):
+                    if st.form_submit_button("Save Performance"):
                         score = calculate_predictive_score(ga, gb, gc, gd)
-                        st.session_state.data_store["A"].append({
-                            "Class": sel_class, "Subject": sel_sub,
-                            "A": ga, "B": gb, "C": gc, "D": gd, "Predictive Score": score
-                        })
+                        st.session_state.data_store["A"].append({"Class": sel_class, "Subject": sel_sub, "A": ga, "B": gb, "C": gc, "D": gd, "Predictive Score": score})
                         st.rerun()
 
         if st.session_state.data_store["A"]:
@@ -199,23 +209,17 @@ else:
 
     # --- SECTION C: EFFICIENCY MAPPING ---
     elif nav == "Efficiency Mapping (C)":
-        st.header("🎯 Efficiency Mapping & Separate Reports")
-        if st.button("🔄 Auto-Map Teachers"):
+        st.header("🎯 Efficiency Mapping & Reports")
+        if st.button("🔄 Auto-Map All Teachers"):
             st.session_state.data_store["C"] = []
             for teacher in st.session_state.data_store["B"]:
                 relevant = [a for a in st.session_state.data_store["A"] if a['Subject'].lower() == teacher['Expertise'].lower()]
                 if relevant:
                     for r in relevant:
                         status = "BEST TEACHER" if r['Predictive Score'] >= 70 else "IMPROVEMENT NEEDED"
-                        st.session_state.data_store["C"].append({
-                            "Class": r['Class'], "Subject": teacher['Expertise'], "Teacher": teacher['Name'], 
-                            "Predictive Score": r['Predictive Score'], "Status": status
-                        })
+                        st.session_state.data_store["C"].append({"Class": r['Class'], "Subject": teacher['Expertise'], "Teacher": teacher['Name'], "Predictive Score": r['Predictive Score'], "Status": status})
                 else:
-                    st.session_state.data_store["C"].append({
-                        "Class": "N/A", "Subject": teacher['Expertise'], "Teacher": teacher['Name'], 
-                        "Predictive Score": 0, "Status": "NO DATA"
-                    })
+                    st.session_state.data_store["C"].append({"Class": "N/A", "Subject": teacher['Expertise'], "Teacher": teacher['Name'], "Predictive Score": 0, "Status": "NO DATA"})
             st.success("Mapping Completed!")
 
         if st.session_state.data_store["C"]:
@@ -223,13 +227,13 @@ else:
             st.dataframe(df_c)
             best = df_c[df_c["Status"] == "BEST TEACHER"]
             improve = df_c[df_c["Status"].isin(["IMPROVEMENT NEEDED", "NO DATA"])]
-            col1, col2 = st.columns(2)
-            with col1: st.download_button("📥 Download Best PDF", create_pdf(best, "Best Teachers"), "Best.pdf")
-            with col2: st.download_button("📥 Download Improvement PDF", create_pdf(improve, "Improvement"), "Improvement.pdf")
+            c1, c2 = st.columns(2)
+            with c1: st.download_button("📥 Download Best PDF", create_pdf(best, "Best Teachers"), "Best.pdf")
+            with c2: st.download_button("📥 Download Improvement PDF", create_pdf(improve, "Improvement"), "Improvement.pdf")
 
     # --- SECTION D: TEACHER PORTAL ---
     elif nav == "Teacher Portal":
-        st.header("📜 Individual Teacher Portal")
+        st.header("📜 Teacher Portal")
         if st.session_state.data_store["B"]:
             t_names = [t['Name'] for t in st.session_state.data_store["B"]]
             sel_t = st.selectbox("Select Teacher", t_names)
@@ -237,5 +241,3 @@ else:
             if t_data:
                 st.dataframe(pd.DataFrame(t_data))
                 st.download_button(f"📥 Download {sel_t}'s Report", create_pdf(t_data, f"Report: {sel_t}"), f"{sel_t}.pdf")
-            else:
-                st.info("No data available. Run Auto-Map first.")

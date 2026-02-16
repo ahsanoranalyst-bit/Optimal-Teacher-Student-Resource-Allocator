@@ -157,16 +157,15 @@ else:
             st.dataframe(pd.DataFrame(st.session_state.data_store["B"]), use_container_width=True)
 
     elif nav == "Efficiency Mapping (C)":
-        st.header("🎯 Strategic Mapping & Multi-Section Analysis")
+        st.header("🎯 Deployment & Report Generation")
         
-        # --- TABBED VIEW FOR ORGANIZATION ---
-        tab1, tab2, tab3 = st.tabs(["⚡ Auto/Manual Mapping", "👨‍🏫 Teacher-Wise View", "📥 Export Reports"])
+        tab1, tab2, tab3 = st.tabs(["⚡ Mapping Control", "👨‍🏫 Teacher-Specific Report", "📥 Bulk Export"])
 
         with tab1:
-            st.subheader("Deployment Management")
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("Run Automatic Mapping for All"):
+            st.subheader("Auto & Manual Controls")
+            c_auto, c_reset = st.columns(2)
+            with c_auto:
+                if st.button("🚀 Run All Automatic Mappings"):
                     st.session_state.data_store["C"] = []
                     for record in st.session_state.data_store["A"]:
                         matches = [t for t in st.session_state.data_store["B"] if t['Expertise'] == record['Subject']]
@@ -178,54 +177,55 @@ else:
                                 "Teacher": best_t['Name'], "Current Score": record['Predictive Score'],
                                 "Status": status
                             })
-                    st.success("All classes mapped automatically!")
+                    st.success("Mapping generated successfully!")
                     st.rerun()
-            with col2:
-                if st.button("Reset Mappings"):
+            with c_reset:
+                if st.button("🗑️ Reset Mappings"):
                     st.session_state.data_store["C"] = []
                     st.rerun()
 
             st.divider()
-            with st.expander("🛠️ Individual Class Manual Allocation"):
-                if st.session_state.data_store["A"] and st.session_state.data_store["B"]:
+            with st.expander("🛠️ Individual Manual Assignment"):
+                if st.session_state.data_store["A"]:
                     options = [f"{x['Class']} | {x['Subject']}" for x in st.session_state.data_store["A"]]
-                    sel = st.selectbox("Select Class", options)
+                    sel = st.selectbox("Select Class/Subject", options)
                     parts = sel.split(" | ")
                     matches = [t for t in st.session_state.data_store["B"] if t['Expertise'] == parts[1]]
                     if matches:
                         t_names = [t['Name'] for t in matches]
-                        selected_teacher = st.selectbox("Assign Teacher", t_names)
-                        if st.button("Confirm Individual Assignment"):
+                        selected_teacher = st.selectbox("Assign Expert Teacher", t_names)
+                        if st.button("Confirm Manual Assign"):
                             class_data = next(x for x in st.session_state.data_store["A"] if x['Class'] == parts[0] and x['Subject'] == parts[1])
                             status = "BEST PERFORMER" if class_data['Predictive Score'] >= 60 else "NEEDS IMPROVEMENT"
+                            # Add to C
                             st.session_state.data_store["C"].append({
                                 "Class": parts[0], "Subject": parts[1],
                                 "Teacher": selected_teacher, "Current Score": class_data['Predictive Score'],
                                 "Status": status
                             })
-                            st.success("Assigned successfully.")
+                            st.success(f"Assigned {selected_teacher} to {parts[0]}")
                             st.rerun()
 
         with tab2:
-            st.subheader("Teacher Performance Across Sections")
+            st.subheader("Individual Teacher Performance Analysis")
             if st.session_state.data_store["C"]:
                 mapping_df = pd.DataFrame(st.session_state.data_store["C"])
-                teacher_list = mapping_df['Teacher'].unique()
-                selected_t = st.selectbox("Search Performance by Teacher Name", ["Select Teacher"] + list(teacher_list))
+                t_list = sorted(list(mapping_df['Teacher'].unique()))
+                selected_t = st.selectbox("Select Teacher to Generate Report", ["Choose Teacher"] + t_list)
                 
-                if selected_t != "Select Teacher":
+                if selected_t != "Choose Teacher":
                     t_filter = mapping_df[mapping_df['Teacher'] == selected_t]
-                    st.write(f"Showing all classes assigned to: **{selected_t}**")
+                    st.write(f"Deployment Table for **{selected_t}**")
                     st.table(t_filter)
                     
-                    # Mini Summary for this specific teacher
-                    avg_score = t_filter['Current Score'].mean()
-                    st.metric("Average Predictive Score", f"{round(avg_score, 2)}%")
+                    # --- FIX: Generate PDF for this specific teacher ---
+                    teacher_pdf = create_pdf(t_filter.to_dict('records'), f"Performance Report: {selected_t}")
+                    st.download_button(f"📥 Download {selected_t}'s PDF Report", teacher_pdf, f"{selected_t}_Report.pdf")
             else:
-                st.info("No mappings available. Please run mapping in the first tab.")
+                st.info("No deployment data. Please run mapping first.")
 
         with tab3:
-            st.subheader("Generate Final Documentation")
+            st.subheader("Bulk Category Reports")
             if st.session_state.data_store["C"]:
                 m_df = pd.DataFrame(st.session_state.data_store["C"])
                 imp = m_df[m_df['Status'] == "NEEDS IMPROVEMENT"].to_dict('records')
@@ -234,14 +234,15 @@ else:
                 c1, c2 = st.columns(2)
                 with c1:
                     if imp:
-                        pdf_i = create_pdf(imp, "Improvement Required List")
-                        st.download_button("🔴 Download Improvement Report", pdf_i, "Improvement_Report.pdf")
+                        st.error(f"Improvement Required: {len(imp)}")
+                        pdf_i = create_pdf(imp, "Overall Improvement List")
+                        st.download_button("📥 Download All Improvement PDF", pdf_i, "Overall_Improvement.pdf")
                 with c2:
                     if best:
-                        pdf_b = create_pdf(best, "Best Performers List")
-                        st.download_button("🟢 Download Best Performers Report", pdf_b, "Best_Performers_Report.pdf")
+                        st.success(f"Best Performers: {len(best)}")
+                        pdf_b = create_pdf(best, "Overall Best Performers List")
+                        st.download_button("📥 Download All Best PDF", pdf_b, "Overall_Best.pdf")
                 
                 st.divider()
-                st.write("### Full Master Deployment List")
-                st.dataframe(m_df.sort_values(by="Class"), use_container_width=True)
-
+                st.write("### Master Records View")
+                st.dataframe(m_df, use_container_width=True)

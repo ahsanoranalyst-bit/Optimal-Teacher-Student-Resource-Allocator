@@ -1,12 +1,10 @@
-
-
-
 import streamlit as st
 import pandas as pd
 from fpdf import FPDF
 from datetime import datetime
 
 # --- 1. CORE INITIALIZATION ---
+# Activation key remains as per your requirement
 ACTIVATION_KEY = "PAK-2026"
 
 if 'authenticated' not in st.session_state: st.session_state.authenticated = False
@@ -22,6 +20,7 @@ if 'data_store' not in st.session_state:
 def calculate_predictive_score(a, b, c, d):
     total = a + b + c + d
     if total == 0: return 0
+    # Weightage: A=100%, B=75%, C=50%, D=25%
     score = ((a * 100) + (b * 75) + (c * 50) + (d * 25)) / total
     return round(score, 2)
 
@@ -61,26 +60,27 @@ def create_pdf(data, title):
     pdf.ln(5)
     
     if not df.empty:
-        # کالمز کی ترتیب درست کی گئی: Predictive Score اب 5ویں نمبر پر ہے
-        display_cols = ["Class", "Subject", "Teacher", "Current Score", "Predictive Score", "Status"]
-        column_widths = {"Class": 25, "Subject": 35, "Teacher": 45, "Current Score": 25, "Predictive Score": 30, "Status": 30}
+        # Define columns to display in PDF
+        display_cols = ["Class", "Subject", "Teacher", "Current Score", "Status"]
+        column_widths = {"Class": 30, "Subject": 40, "Teacher": 50, "Current Score": 35, "Status": 35}
         
-        # Header
-        pdf.set_font('Arial', 'B', 8)
+        # Header Row
+        pdf.set_font('Arial', 'B', 9)
         pdf.set_fill_color(230, 235, 245)
         for col in display_cols:
-            pdf.cell(column_widths[col], 10, col, 1, 0, 'C', fill=True)
+            if col in df.columns:
+                pdf.cell(column_widths[col], 10, col, 1, 0, 'C', fill=True)
         pdf.ln()
         
-        # Data
-        pdf.set_font('Arial', '', 8)
+        # Data Rows
+        pdf.set_font('Arial', '', 9)
         fill = False
         for _, row in df.iterrows():
             pdf.set_fill_color(248, 248, 248) if fill else pdf.set_fill_color(255, 255, 255)
             for col in display_cols:
-                # Predictive Score کالم میں ڈیٹا ڈالنے کے لیے چیک
-                val = str(row.get('Current Score', '0')) if col == "Predictive Score" else str(row.get(col, ''))
-                pdf.cell(column_widths[col], 9, val, 1, 0, 'C', fill=True)
+                if col in df.columns:
+                    val = str(row[col])
+                    pdf.cell(column_widths[col], 9, val, 1, 0, 'C', fill=True)
             pdf.ln()
             fill = not fill
             
@@ -184,7 +184,8 @@ else:
                         st.rerun()
         
         if st.session_state.data_store["A"]:
-            st.dataframe(pd.DataFrame(st.session_state.data_store["A"]), use_container_width=True)
+            df_view = pd.DataFrame(st.session_state.data_store["A"])
+            st.dataframe(df_view, use_container_width=True)
 
     elif nav == "Teacher Experts (B)":
         st.header("👨‍🏫 Faculty Expertise")
@@ -202,39 +203,70 @@ else:
             st.dataframe(pd.DataFrame(st.session_state.data_store["B"]), use_container_width=True)
 
     elif nav == "Efficiency Mapping (C)":
-        st.header("🎯 Strategic Deployment")
+        st.header("🎯 Strategic Deployment (Grade-wise Lists)")
         
-        # خودکار پروسیس بٹن (Auto Process All)
-        if st.button("🔄 Auto-Generate All Mappings from Data"):
-            st.session_state.data_store["C"] = [] # Reset old mappings
-            for class_data in st.session_state.data_store["A"]:
-                matches = [t for t in st.session_state.data_store["B"] if t['Expertise'] == class_data['Subject']]
-                if matches:
+        if st.session_state.data_store["A"] and st.session_state.data_store["B"]:
+            # --- ALLOCATION SECTION ---
+            with st.expander("🆕 Create New Allocation"):
+                options = [f"{x['Class']} | {x['Subject']}" for x in st.session_state.data_store["A"]]
+                sel = st.selectbox("Analyze Class Need", options)
+                parts = sel.split(" | ")
+                
+                class_data = next((x for x in st.session_state.data_store["A"] if x['Class'] == parts[0] and x['Subject'] == parts[1]), None)
+                matches = [t for t in st.session_state.data_store["B"] if t['Expertise'] == parts[1]]
+                
+                if matches and class_data:
                     best_t = sorted(matches, key=lambda x: x['Success'], reverse=True)[0]
-                    status = "BEST PERFORMER" if class_data['Predictive Score'] >= 60 else "NEEDS IMPROVEMENT"
-                    st.session_state.data_store["C"].append({
-                        "Class": class_data['Class'], "Subject": class_data['Subject'],
-                        "Teacher": best_t['Name'], "Current Score": class_data['Predictive Score'],
-                        "Status": status
-                    })
-            st.success("All class records processed automatically!")
-            st.rerun()
+                    st.write(f"Best Teacher Match: **{best_t['Name']}**")
+                    st.write(f"Current Class Predictive Score: **{class_data['Predictive Score']}%**")
+                    
+                    if st.button("Authorize Deployment"):
+                        # Logic: Score < 60 means the class/teacher needs improvement
+                        status = "BEST PERFORMER" if class_data['Predictive Score'] >= 60 else "NEEDS IMPROVEMENT"
+                        st.session_state.data_store["C"].append({
+                            "Class": parts[0], 
+                            "Subject": parts[1],
+                            "Teacher": best_t['Name'],
+                            "Current Score": class_data['Predictive Score'],
+                            "Status": status
+                        })
+                        st.success("Deployment Logged.")
+                        st.rerun()
 
-        if st.session_state.data_store["C"]:
-            mapping_df = pd.DataFrame(st.session_state.data_store["C"]).sort_values(by="Class")
-            improvement_list = mapping_df[mapping_df['Status'] == "NEEDS IMPROVEMENT"].to_dict('records')
-            best_list = mapping_df[mapping_df['Status'] == "BEST PERFORMER"].to_dict('records')
+            # --- DUAL REPORT GENERATION ---
+            if st.session_state.data_store["C"]:
+                mapping_df = pd.DataFrame(st.session_state.data_store["C"])
+                # Sort by Class (Grade-wise)
+                mapping_df = mapping_df.sort_values(by="Class")
+                
+                improvement_list = mapping_df[mapping_df['Status'] == "NEEDS IMPROVEMENT"].to_dict('records')
+                best_list = mapping_df[mapping_df['Status'] == "BEST PERFORMER"].to_dict('records')
+                
+                st.divider()
+                st.subheader("📋 Specialized Performance Reports")
+                
+                c1, c2 = st.columns(2)
+                
+                with c1:
+                    st.error(f"🔴 Improvement Required ({len(improvement_list)})")
+                    if improvement_list:
+                        pdf_imp = create_pdf(improvement_list, "Teacher Improvement List (Grade-wise)")
+                        st.download_button("📥 Download Improvement PDF", pdf_imp, "Improvement_Report.pdf")
+                    else:
+                        st.write("No records found.")
 
-            st.divider()
-            c1, c2 = st.columns(2)
-            with c1:
-                if improvement_list:
-                    pdf_imp = create_pdf(improvement_list, "Teacher Improvement List")
-                    st.download_button("📥 Download ALL Improvement Records", pdf_imp, "Full_Improvement_Report.pdf")
-            with c2:
-                if best_list:
-                    pdf_best = create_pdf(best_list, "Best Performers List")
-                    st.download_button("📥 Download ALL Best Performers", pdf_best, "Full_Best_Report.pdf")
+                with c2:
+                    st.success(f"🟢 Best Performers ({len(best_list)})")
+                    if best_list:
+                        pdf_best = create_pdf(best_list, "Best Performers List (Grade-wise)")
+                        st.download_button("📥 Download Best Teachers PDF", pdf_best, "Best_Performers_Report.pdf")
+                    else:
+                        st.write("No records found.")
 
-            st.write("### Current Active Mappings")
-            st.dataframe(mapping_df, use_container_width=True)
+                st.divider()
+                st.write("### All Deployment Records (Sorted by Grade)")
+                st.dataframe(mapping_df, use_container_width=True)
+                
+                if st.button("🗑️ Reset All Mappings"):
+                    st.session_state.data_store["C"] = []
+                    st.rerun()

@@ -1,6 +1,5 @@
 
 
-
 import streamlit as st
 import pandas as pd
 from fpdf import FPDF
@@ -136,7 +135,6 @@ else:
     handle_bulk_upload()
     nav = st.sidebar.selectbox("Main Menu", ["Student Performance (A)", "Teacher Experts (B)", "Efficiency Mapping (C)", "Teacher Portal"])
 
-    # --- SECTION A: PERFORMANCE ---
     if nav == "Student Performance (A)":
         st.header("📊 Performance Records")
         class_list = list(st.session_state.data_store["Grades_Config"].keys())
@@ -163,7 +161,6 @@ else:
                 st.session_state.data_store["A"].pop(idx_to_del)
                 st.rerun()
 
-    # --- SECTION B: TEACHERS ---
     elif nav == "Teacher Experts (B)":
         st.header("👨‍🏫 Teacher Registration")
         with st.form("t_form"):
@@ -182,52 +179,65 @@ else:
                 st.session_state.data_store["B"].pop(idx_to_del_b)
                 st.rerun()
 
-    # --- SECTION C: MAPPING & PDF ---
     elif nav == "Efficiency Mapping (C)":
         st.header("🎯 Efficiency Mapping & Reports")
-        if st.button("🔄 Auto-Map All Classes"):
+        if st.button("🔄 Auto-Map All Registered Teachers"):
             st.session_state.data_store["C"] = []
-            for record in st.session_state.data_store["A"]:
-                matches = [t for t in st.session_state.data_store["B"] if t['Expertise'].lower() == record['Subject'].lower()]
-                if matches:
-                    best_t = sorted(matches, key=lambda x: x['Success'], reverse=True)[0]
-                    status = "BEST TEACHER" if record['Predictive Score'] >= 70 else "IMPROVEMENT NEEDED"
+            
+            # FIXED LOGIC: Iterate through Teachers (B) to ensure everyone is included
+            for teacher in st.session_state.data_store["B"]:
+                # Find student data for this teacher's expertise
+                relevant_student_data = [a for a in st.session_state.data_store["A"] if a['Subject'].lower() == teacher['Expertise'].lower()]
+                
+                if relevant_student_data:
+                    for record in relevant_student_data:
+                        # Status based on Predictive Score (70 Threshold)
+                        status = "BEST TEACHER" if record['Predictive Score'] >= 70 else "IMPROVEMENT NEEDED"
+                        st.session_state.data_store["C"].append({
+                            "Class": record['Class'], 
+                            "Subject": teacher['Expertise'], 
+                            "Teacher": teacher['Name'], 
+                            "Success Rate": teacher['Success'],
+                            "Predictive Score": record['Predictive Score'], # 5th Point Included
+                            "Status": status
+                        })
+                else:
+                    # Include teachers like Ahsan, Umer, Ayyan even if no student data exists
                     st.session_state.data_store["C"].append({
-                        "Class": record['Class'], "Subject": record['Subject'], 
-                        "Teacher": best_t['Name'], "Score": record['Predictive Score'], "Status": status
+                        "Class": "No Data", 
+                        "Subject": teacher['Expertise'], 
+                        "Teacher": teacher['Name'], 
+                        "Success Rate": teacher['Success'],
+                        "Predictive Score": 0,
+                        "Status": "NO PERFORMANCE DATA"
                     })
-            st.success("Mapping Processed!")
+            st.success("All Teachers Mapped!")
 
         if st.session_state.data_store["C"]:
             df_c = pd.DataFrame(st.session_state.data_store["C"])
             st.dataframe(df_c)
             
             best_df = df_c[df_c["Status"] == "BEST TEACHER"]
-            improve_df = df_c[df_c["Status"] == "IMPROVEMENT NEEDED"]
+            improve_df = df_c[df_c["Status"].isin(["IMPROVEMENT NEEDED", "NO PERFORMANCE DATA"])]
             
             col1, col2 = st.columns(2)
             with col1:
                 if not best_df.empty:
-                    st.success(f"Best Found: {len(best_df)}")
+                    st.success(f"Best: {len(best_df)}")
                     st.download_button("📥 Download Best PDF", create_pdf(best_df, "BEST TEACHERS"), "Best_Performers.pdf")
             with col2:
                 if not improve_df.empty:
-                    st.warning(f"Improvement Needed: {len(improve_df)}")
+                    st.warning(f"Improvement: {len(improve_df)}")
                     st.download_button("📥 Download Improvement PDF", create_pdf(improve_df, "IMPROVEMENT"), "Improvement_List.pdf")
 
-    # --- SECTION D: TEACHER PORTAL ---
     elif nav == "Teacher Portal":
         st.header("📜 Teacher Personal Portal")
         if st.session_state.data_store["B"]:
             names = list(set([t['Name'] for t in st.session_state.data_store["B"]]))
-            selected = st.selectbox("Select Teacher to View Reports", names)
-            
-            # Find classes assigned to this teacher in Mapping C
+            selected = st.selectbox("Select Teacher", names)
             report_data = [x for x in st.session_state.data_store["C"] if x['Teacher'] == selected]
-            
             if report_data:
-                st.subheader(f"Performance Data for: {selected}")
                 st.dataframe(pd.DataFrame(report_data))
                 st.download_button(f"📥 Download {selected}'s PDF", create_pdf(report_data, f"REPORT: {selected}"), f"{selected}_Report.pdf")
             else:
-                st.info("No mapping data found for this teacher. Please run 'Auto-Map' in Section C first.")
+                st.info("Please run 'Auto-Map' in Section C first.")

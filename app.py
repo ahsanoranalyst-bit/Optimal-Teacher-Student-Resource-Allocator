@@ -67,7 +67,7 @@ def create_pdf(data, title):
             pdf.ln()
     return pdf.output(dest='S').encode('latin-1')
 
-# --- 3. BULK UPLOAD LOGIC (RESTORED) ---
+# --- 3. BULK UPLOAD LOGIC ---
 def handle_bulk_upload():
     st.sidebar.markdown("---")
     st.sidebar.subheader("📂 Excel Data Import")
@@ -135,16 +135,55 @@ else:
     handle_bulk_upload()
     nav = st.sidebar.selectbox("Main Menu", ["Student Performance (A)", "Teacher Experts (B)", "Efficiency Mapping (C)", "Teacher Portal"])
 
+    # --- SECTION A: STUDENT PERFORMANCE (MANUAL ENTRY RESTORED) ---
     if nav == "Student Performance (A)":
-        st.header("📊 Student Performance")
-        df_a = pd.DataFrame(st.session_state.data_store["A"])
-        st.dataframe(df_a)
+        st.header("📊 Student Performance Records")
+        class_list = list(st.session_state.data_store["Grades_Config"].keys())
+        
+        if class_list:
+            with st.expander("➕ Add Manual Record"):
+                sel_class = st.selectbox("Select Class", class_list)
+                sel_sub = st.selectbox("Select Subject", st.session_state.data_store["Grades_Config"][sel_class])
+                with st.form("manual_a_form"):
+                    c1,c2,c3,c4 = st.columns(4)
+                    ga = c1.number_input("A Grade Count", min_value=0)
+                    gb = c2.number_input("B Grade Count", min_value=0)
+                    gc = c3.number_input("C Grade Count", min_value=0)
+                    gd = c4.number_input("D Grade Count", min_value=0)
+                    if st.form_submit_button("Save Performance Record"):
+                        score = calculate_predictive_score(ga, gb, gc, gd)
+                        st.session_state.data_store["A"].append({
+                            "Class": sel_class, "Subject": sel_sub,
+                            "A": ga, "B": gb, "C": gc, "D": gd, 
+                            "Predictive Score": score
+                        })
+                        st.success("Record Saved!")
+                        st.rerun()
 
+        if st.session_state.data_store["A"]:
+            df_a = pd.DataFrame(st.session_state.data_store["A"])
+            st.dataframe(df_a)
+            if st.button("🗑️ Clear All Performance Data"):
+                st.session_state.data_store["A"] = []
+                st.rerun()
+
+    # --- SECTION B: TEACHER REGISTRY ---
     elif nav == "Teacher Experts (B)":
         st.header("👨‍🏫 Teacher Registry")
-        df_b = pd.DataFrame(st.session_state.data_store["B"])
-        st.dataframe(df_b)
+        with st.form("manual_t_form"):
+            t_name = st.text_input("Teacher Name")
+            t_exp = st.text_input("Expertise (e.g. Math)")
+            t_success = st.number_input("Success Rate (%)", 0, 100)
+            if st.form_submit_button("Register Teacher"):
+                st.session_state.data_store["B"].append({"Name": t_name, "Expertise": t_exp, "Success": t_success})
+                st.success("Teacher Registered!")
+                st.rerun()
 
+        if st.session_state.data_store["B"]:
+            df_b = pd.DataFrame(st.session_state.data_store["B"])
+            st.dataframe(df_b)
+
+    # --- SECTION C: EFFICIENCY MAPPING (SEPARATE PDFS) ---
     elif nav == "Efficiency Mapping (C)":
         st.header("🎯 Efficiency Mapping & Separate Reports")
         if st.button("🔄 Auto-Map All Teachers"):
@@ -171,15 +210,24 @@ else:
             best_df = df_full[df_full["Status"] == "BEST TEACHER"]
             improve_df = df_full[df_full["Status"].isin(["IMPROVEMENT NEEDED", "NO DATA FOUND"])]
             
+            st.markdown("---")
             c1, c2 = st.columns(2)
-            with c1: st.download_button("📥 Download Best Teachers PDF", create_pdf(best_df, "Best Teachers"), "Best_Teachers.pdf")
-            with c2: st.download_button("📥 Download Improvement PDF", create_pdf(improve_df, "Improvement List"), "Improvement_List.pdf")
+            with c1: 
+                if not best_df.empty:
+                    st.download_button("📥 Download Best Teachers PDF", create_pdf(best_df, "Best Teachers"), "Best_Teachers_Report.pdf")
+            with c2: 
+                if not improve_df.empty:
+                    st.download_button("📥 Download Improvement PDF", create_pdf(improve_df, "Improvement List"), "Improvement_Needed_Report.pdf")
 
+    # --- SECTION D: TEACHER PORTAL ---
     elif nav == "Teacher Portal":
         st.header("📜 Teacher Portal")
-        names = [t['Name'] for t in st.session_state.data_store["B"]]
-        selected = st.selectbox("Select Teacher", names)
-        report_data = [x for x in st.session_state.data_store["C"] if x['Teacher'] == selected]
-        if report_data:
-            st.dataframe(pd.DataFrame(report_data))
-            st.download_button(f"📥 Download {selected}'s PDF", create_pdf(report_data, f"Teacher Report: {selected}"), f"{selected}_Report.pdf")
+        if st.session_state.data_store["B"]:
+            names = [t['Name'] for t in st.session_state.data_store["B"]]
+            selected = st.selectbox("Select Teacher", names)
+            report_data = [x for x in st.session_state.data_store["C"] if x['Teacher'] == selected]
+            if report_data:
+                st.dataframe(pd.DataFrame(report_data))
+                st.download_button(f"📥 Download {selected}'s PDF", create_pdf(report_data, f"Teacher Report: {selected}"), f"{selected}_Report.pdf")
+            else:
+                st.info("No data found. Run Auto-Map in Section C first.")

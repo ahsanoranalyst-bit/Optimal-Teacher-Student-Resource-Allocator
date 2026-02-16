@@ -53,13 +53,14 @@ def create_pdf(data, title):
     pdf.cell(0, 10, f"REPORT: {title.upper()}", 0, 1, 'L')
     pdf.ln(5)
     if not df.empty:
+        # Adjusted width for more columns
         w = 190 / len(df.columns)
-        pdf.set_font('Arial', 'B', 8)
+        pdf.set_font('Arial', 'B', 7)
         pdf.set_fill_color(230, 230, 230)
         for col in df.columns:
             pdf.cell(w, 10, str(col), 1, 0, 'C', fill=True)
         pdf.ln()
-        pdf.set_font('Arial', '', 7)
+        pdf.set_font('Arial', '', 6)
         for _, row in df.iterrows():
             for col in df.columns:
                 pdf.cell(w, 8, str(row[col]), 1, 0, 'C')
@@ -91,11 +92,10 @@ def handle_bulk_upload():
                         })
                 elif upload_type == "Teachers":
                     for _, row in df.iterrows():
-                        # Added Assigned Class logic here
                         st.session_state.data_store["B"].append({
-                            "Name": row['Name'], 
-                            "Expertise": row['Expertise'], 
-                            "Success": row['Success'],
+                            "Name": row['Name'],
+                            "Expertise": row['Expertise'],
+                            "Success": int(row['Success']),
                             "Assigned Class": str(row['Assigned Class'])
                         })
                 st.sidebar.success("Import Successful!")
@@ -179,7 +179,7 @@ else:
             t_name = st.text_input("Name")
             t_exp = st.text_input("Expertise")
             t_class = st.selectbox("Assigned Class", class_list) if class_list else st.text_input("Assigned Class")
-            t_success = st.number_input("Success Rate", 0, 100)
+            t_success = st.number_input("Success Rate (Past Record)", 0, 100)
             if st.form_submit_button("Register"):
                 st.session_state.data_store["B"].append({"Name": t_name, "Expertise": t_exp, "Success": t_success, "Assigned Class": t_class})
                 st.rerun()
@@ -193,46 +193,77 @@ else:
                 st.rerun()
 
     elif nav == "Efficiency Mapping (C)":
-        st.header("🎯 Efficiency Mapping")
+        st.header("🎯 Efficiency Mapping & Action Plans")
         if st.button("🔄 Auto-Map Teachers"):
             st.session_state.data_store["C"] = []
             for teacher in st.session_state.data_store["B"]:
-                # Enhanced Logic: Matching by Subject AND Assigned Class
-                relevant = [a for a in st.session_state.data_store["A"] 
-                           if a['Subject'].lower() == teacher['Expertise'].lower() 
+                relevant = [a for a in st.session_state.data_store["A"]
+                           if a['Subject'].lower() == teacher['Expertise'].lower()
                            and a['Class'] == teacher['Assigned Class']]
                 
                 if relevant:
                     for r in relevant:
-                        status = "BEST TEACHER" if r['Predictive Score'] >= 70 else "IMPROVEMENT NEEDED"
+                        # --- SMART LOGIC INTEGRATION ---
+                        t_success = teacher['Success']
+                        p_score = r['Predictive Score']
+                        
+                        # Weighted Calculation: 60% Class Results, 40% Teacher History
+                        combined_index = (p_score * 0.6) + (t_success * 0.4)
+                        
+                        # Diagnostic Logic
+                        if combined_index >= 85:
+                            status = "GOLD STANDARD"
+                            action = "Promote as Mentor"
+                        elif p_score < 50 and t_success < 50:
+                            status = "CRITICAL: DOUBLE ACTION"
+                            action = "Teacher Training & Remedial Student Classes"
+                        elif p_score < 50 and t_success >= 70:
+                            status = "CLASS AT RISK"
+                            action = "Focus on Student Basics / Extra Classes"
+                        elif p_score >= 70 and t_success < 50:
+                            status = "SKILL GAP"
+                            action = "Teacher Subject-Matter Training Required"
+                        elif combined_index >= 70:
+                            status = "BEST TEACHER"
+                            action = "Maintain Performance"
+                        else:
+                            status = "IMPROVEMENT NEEDED"
+                            action = "Closer Monitoring Required"
+
                         st.session_state.data_store["C"].append({
-                            "Class": r['Class'], "Subject": teacher['Expertise'], "Teacher": teacher['Name'], 
-                            "Predictive Score": r['Predictive Score'], "Status": status
+                            "Class": r['Class'], "Subject": teacher['Expertise'], "Teacher": teacher['Name'],
+                            "Teacher Success": t_success, "Student Score": p_score, 
+                            "Efficiency Index": round(combined_index, 2), "Status": status, "Action Plan": action
                         })
                 else:
                     st.session_state.data_store["C"].append({
-                        "Class": teacher['Assigned Class'], "Subject": teacher['Expertise'], "Teacher": teacher['Name'], 
-                        "Predictive Score": 0, "Status": "NO DATA"
+                        "Class": teacher['Assigned Class'], "Subject": teacher['Expertise'], "Teacher": teacher['Name'],
+                        "Teacher Success": teacher['Success'], "Student Score": 0, 
+                        "Efficiency Index": 0, "Status": "NO CURRENT DATA", "Action Plan": "Conduct Assessment"
                     })
-            st.success("Mapping Completed based on Class & Subject!")
+            st.success("Mapping Completed with Smart Action Plans!")
 
         if st.session_state.data_store["C"]:
             df_c = pd.DataFrame(st.session_state.data_store["C"])
             st.dataframe(df_c)
-            best = df_c[df_c["Status"] == "BEST TEACHER"]
-            improve = df_c[df_c["Status"].isin(["IMPROVEMENT NEEDED", "NO DATA"])]
+            best = df_c[df_c["Status"].isin(["BEST TEACHER", "GOLD STANDARD"])]
+            improve = df_c[~df_c["Status"].isin(["BEST TEACHER", "GOLD STANDARD"])]
             col1, col2 = st.columns(2)
-            with col1: st.download_button("📥 Download Best PDF", create_pdf(best, "Best Teachers"), "Best.pdf")
-            with col2: st.download_button("📥 Download Improvement PDF", create_pdf(improve, "Improvement"), "Improvement.pdf")
+            with col1: st.download_button("📥 Download Excellence Report", create_pdf(best, "Excellence Report"), "Excellence.pdf")
+            with col2: st.download_button("📥 Download Action Plan Report", create_pdf(improve, "Required Actions"), "Action_Plan.pdf")
 
     elif nav == "Teacher Portal":
-        st.header("📜 Individual Teacher Portal")
+        st.header("📜 Comprehensive Teacher Report")
         if st.session_state.data_store["B"]:
-            t_names = [t['Name'] for t in st.session_state.data_store["B"]]
+            t_names = list(set([t['Name'] for t in st.session_state.data_store["B"]]))
             sel_t = st.selectbox("Select Teacher", t_names)
+            
+            # Filtering all records for this specific teacher across different classes
             t_data = [x for x in st.session_state.data_store["C"] if x['Teacher'] == sel_t]
+            
             if t_data:
+                st.subheader(f"Performance Summary for {sel_t}")
                 st.dataframe(pd.DataFrame(t_data))
-                st.download_button(f"📥 Download {sel_t}'s Report", create_pdf(t_data, f"Report: {sel_t}"), f"{sel_t}.pdf")
+                st.download_button(f"📥 Download Full Profile: {sel_t}", create_pdf(t_data, f"Individual Analysis: {sel_t}"), f"{sel_t}_Report.pdf")
             else:
-                st.info("No data available. Run Auto-Map first.")
+                st.info("No mapped data found for this teacher. Please run 'Auto-Map Teachers' in Efficiency Mapping.")

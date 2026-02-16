@@ -13,7 +13,7 @@ if 'setup_complete' not in st.session_state: st.session_state.setup_complete = F
 if 'data_store' not in st.session_state:
     st.session_state.data_store = {
         "Grades_Config": {},
-        "A": [], "B": [], "C": [],
+        "A": [], "B": [], "C": [], "Billing": [],
         "School_Name": "Global International Academy"
     }
 
@@ -21,11 +21,10 @@ if 'data_store' not in st.session_state:
 def calculate_predictive_score(a, b, c, d):
     total = a + b + c + d
     if total == 0: return 0
-    # Predictive Score as the 5th Point logic
     score = ((a * 100) + (b * 75) + (c * 50) + (d * 25)) / total
     return round(score, 2)
 
-# --- 2. PROFESSIONAL PDF ENGINE ---
+# --- PROFESSIONAL PDF ENGINE ---
 class SchoolPDF(FPDF):
     def header(self):
         self.set_fill_color(31, 73, 125)
@@ -35,49 +34,38 @@ class SchoolPDF(FPDF):
         school_name = st.session_state.data_store.get("School_Name", "GLOBAL ACADEMY").upper()
         self.cell(0, 12, school_name, 0, 1, 'C')
         self.set_font('Arial', 'I', 10)
-        self.cell(0, 8, "TEACHER EFFICIENCY & MAPPING REPORT", 0, 1, 'C')
-        self.set_text_color(0, 0, 0)
+        self.cell(0, 8, "OFFICIAL FACULTY & BILLING REPORT", 0, 1, 'C')
         self.ln(15)
 
     def footer(self):
-        self.set_y(-30)
+        self.set_y(-20)
         self.set_font('Arial', 'I', 8)
-        self.set_text_color(120, 120, 120)
-        self.cell(0, 10, "__________________________", 0, 1, 'R')
-        self.cell(0, 5, "Academic Director Signature", 0, 1, 'R')
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
-        self.cell(0, 10, f"Report Date: {timestamp} | Page {self.page_no()}", 0, 0, 'L')
+        self.cell(0, 10, f"Page {self.page_no()} | Generated on: {datetime.now().strftime('%Y-%m-%d')}", 0, 0, 'C')
 
-def create_pdf(data, title):
+def generate_pdf_bytes(df, title):
     pdf = SchoolPDF()
     pdf.add_page()
-    df = pd.DataFrame(data)
-    
     pdf.set_font('Arial', 'B', 12)
-    pdf.set_text_color(31, 73, 125)
-    pdf.cell(0, 10, f"REPORT: {title.upper()}", 0, 1, 'L')
+    pdf.cell(0, 10, f"SECTION: {title}", 0, 1, 'L')
     pdf.ln(5)
     
-    if not df.empty:
-        # Re-ordered columns to include Predictive Score as key metric
-        display_cols = ["Class", "Subject", "Teacher", "Current Score", "Status"]
-        col_widths = [25, 40, 45, 35, 45]
-        
-        pdf.set_font('Arial', 'B', 9)
-        pdf.set_fill_color(230, 235, 245)
-        for i, col in enumerate(display_cols):
-            pdf.cell(col_widths[i], 10, col, 1, 0, 'C', fill=True)
+    # Table Header
+    pdf.set_font('Arial', 'B', 8)
+    cols = df.columns
+    col_width = 190 / len(cols)
+    for col in cols:
+        pdf.cell(col_width, 10, str(col), 1, 0, 'C')
+    pdf.ln()
+    
+    # Table Body
+    pdf.set_font('Arial', '', 8)
+    for _, row in df.iterrows():
+        for col in cols:
+            pdf.cell(col_width, 9, str(row[col]), 1, 0, 'C')
         pdf.ln()
-        
-        pdf.set_font('Arial', '', 9)
-        for _, row in df.iterrows():
-            for i, col in enumerate(display_cols):
-                pdf.cell(col_widths[i], 10, str(row[col]), 1, 0, 'C')
-            pdf.ln()
-            
     return pdf.output(dest='S').encode('latin-1')
 
-# --- 3. MAIN APP LOGIC ---
+# --- 2. AUTHENTICATION ---
 if not st.session_state.authenticated:
     st.title("🔐 Secure Access")
     key_input = st.text_input("Enter System Key", type="password")
@@ -94,84 +82,75 @@ elif not st.session_state.setup_complete:
         st.session_state.setup_complete = True
         st.rerun()
 
+# --- 3. MAIN DASHBOARD ---
 else:
-    st.sidebar.title("Navigation")
-    nav = st.sidebar.selectbox("Go to", ["Efficiency Mapping (C)", "Data Entry"])
+    st.sidebar.title(f"🏫 {st.session_state.data_store['School_Name']}")
+    nav = st.sidebar.selectbox("Main Menu", ["Faculty Analysis", "Billing & Eid-ul-Fitr", "Student Records"])
 
-    # --- EFFICIENCY MAPPING (C) ---
-    if nav == "Efficiency Mapping (C)":
-        st.header("🎯 Efficiency Mapping & Teacher Analysis")
+    # --- FACULTY ANALYSIS (Best vs Improvement) ---
+    if nav == "Faculty Analysis":
+        st.header("👨‍🏫 Faculty Performance Categorization")
         
-        # 1. Manual Entry / Individual Teacher Search
-        st.subheader("🔍 Teacher-Wise Performance Search")
+        # Adding Teacher Data
+        with st.expander("➕ Add Teacher Record"):
+            with st.form("teacher_form"):
+                t_name = st.text_input("Teacher Name")
+                t_sub = st.text_input("Subject")
+                t_score = st.slider("Success Rate (%)", 0, 100, 75)
+                if st.form_submit_button("Register Teacher"):
+                    st.session_state.data_store["B"].append({"Name": t_name, "Subject": t_sub, "Score": t_score})
+                    st.success("Teacher Registered!")
+
         if st.session_state.data_store["B"]:
-            teacher_list = [t['Name'] for t in st.session_state.data_store["B"]]
-            selected_teacher = st.selectbox("Select Teacher to View Class-wise Report", ["Select..."] + teacher_list)
+            df_teachers = pd.DataFrame(st.session_state.data_store["B"])
             
-            if selected_teacher != "Select...":
-                # Filter data for this specific teacher
-                # Note: In a real scenario, this matches mapping in 'C'
-                teacher_report_data = [row for row in st.session_state.data_store["C"] if row['Teacher'] == selected_teacher]
-                
-                if teacher_report_data:
-                    tdf = pd.DataFrame(teacher_report_data)
-                    st.write(f"### Performance for {selected_teacher}")
-                    st.dataframe(tdf, use_container_width=True)
-                    
-                    pdf_teacher = create_pdf(teacher_report_data, f"Report for {selected_teacher}")
-                    st.download_button(f"📥 Download {selected_teacher}'s Report", pdf_teacher, f"{selected_teacher}_Report.pdf")
-                else:
-                    st.info("No mapping found for this teacher. Please run 'Auto Mapping' or assign manually.")
+            # Logic: Best (Score >= 80), Improvement (Score < 80)
+            best_teachers = df_teachers[df_teachers['Score'] >= 80]
+            imp_teachers = df_teachers[df_teachers['Score'] < 80]
 
-        st.divider()
-
-        # 2. Bulk Actions
-        st.subheader("📦 Bulk Reports & Categories")
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            if st.button("🔄 Sync & Refresh All Mappings"):
-                st.session_state.data_store["C"] = []
-                for record in st.session_state.data_store["A"]:
-                    matches = [t for t in st.session_state.data_store["B"] if t['Expertise'] == record['Subject']]
-                    if matches:
-                        best_t = sorted(matches, key=lambda x: x['Success'], reverse=True)[0]
-                        status = "BEST PERFORMER" if record['Predictive Score'] >= 60 else "NEEDS IMPROVEMENT"
-                        st.session_state.data_store["C"].append({
-                            "Class": record['Class'], "Subject": record['Subject'],
-                            "Teacher": best_t['Name'], "Current Score": record['Predictive Score'],
-                            "Status": status
-                        })
-                st.success("All records synced!")
-                st.rerun()
-
-        # 3. Separate Lists & PDF Downloads
-        if st.session_state.data_store["C"]:
-            full_df = pd.DataFrame(st.session_state.data_store["C"])
-            
-            # Separate Data
-            best_list = full_df[full_df['Status'] == "BEST PERFORMER"].to_dict('records')
-            imp_list = full_df[full_df['Status'] == "NEEDS IMPROVEMENT"].to_dict('records')
-
-            c_best, c_imp = st.columns(2)
-            
-            with c_best:
-                st.markdown("#### ✅ Best Performance Teachers")
-                st.write(f"Total: {len(best_list)}")
-                if best_list:
-                    pdf_best = create_pdf(best_list, "Best Performance List")
-                    st.download_button("🟢 Download Best Report (Bulk)", pdf_best, "Best_Teachers.pdf")
-            
-            with c_imp:
-                st.markdown("#### ⚠️ Improvement Needed")
-                st.write(f"Total: {len(imp_list)}")
-                if imp_list:
-                    pdf_imp = create_pdf(imp_list, "Improvement Required List")
-                    st.download_button("🔴 Download Improvement Report (Bulk)", pdf_imp, "Improvement_Needed.pdf")
+            st.subheader("🌟 Best Teachers (Top Performers)")
+            st.dataframe(best_teachers, use_container_width=True)
+            if not best_teachers.empty:
+                pdf_best = generate_pdf_bytes(best_teachers, "Best Teachers List")
+                st.download_button("📥 Download Best Teachers PDF", pdf_best, "Best_Teachers.pdf")
 
             st.divider()
-            st.write("### Full Efficiency Map")
-            st.dataframe(full_df, use_container_width=True)
 
-    elif nav == "Data Entry":
-        st.info("Please use the sidebar to upload Excel files for Student Performance (A) and Teachers (B).")
+            st.subheader("📉 Improvement Required (Support Needed)")
+            st.dataframe(imp_teachers, use_container_width=True)
+            if not imp_teachers.empty:
+                pdf_imp = generate_pdf_bytes(imp_teachers, "Improvement List")
+                st.download_button("📥 Download Improvement List PDF", pdf_imp, "Improvement_Teachers.pdf")
+
+    # --- BILLING & EID-UL-FITR ---
+    elif nav == "Billing & Eid-ul-Fitr":
+        st.header("💰 Billing Report & Eid-ul-Fitr Bonus")
+        
+        with st.form("billing_form"):
+            b_name = st.text_input("Name (Staff/Teacher)")
+            b_salary = st.number_input("Basic Salary", min_value=0)
+            eid_bonus = st.number_input("Eid-ul-Fitr Bonus", min_value=0)
+            if st.form_submit_button("Add to Billing"):
+                total = b_salary + eid_bonus
+                st.session_state.data_store["Billing"].append({
+                    "Name": b_name, 
+                    "Base Salary": b_salary, 
+                    "Eid-ul-Fitr Bonus": eid_bonus,
+                    "Total Payable": total,
+                    "Date": datetime.now().strftime("%Y-%m-%d")
+                })
+                st.success("Billing Record Added!")
+
+        if st.session_state.data_store["Billing"]:
+            df_bill = pd.DataFrame(st.session_state.data_store["Billing"])
+            st.dataframe(df_bill, use_container_width=True)
+            pdf_bill = generate_pdf_bytes(df_bill, "Billing & Eid-ul-Fitr Report")
+            st.download_button("📥 Download Billing Report PDF", pdf_bill, "Billing_Report.pdf")
+
+    # --- STUDENT RECORDS (Maintaining Predictive Score) ---
+    elif nav == "Student Records":
+        st.header("📊 Student Performance & 5th Point Predictive Score")
+        # Existing logic for student performance here...
+        if st.session_state.data_store["A"]:
+            df_students = pd.DataFrame(st.session_state.data_store["A"])
+            st.dataframe(df_students, use_container_width=True)

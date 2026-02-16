@@ -135,39 +135,43 @@ else:
     handle_bulk_upload()
     nav = st.sidebar.selectbox("Main Menu", ["Student Performance (A)", "Teacher Experts (B)", "Efficiency Mapping (C)", "Teacher Portal"])
 
-    # --- SECTION A: STUDENT PERFORMANCE (MANUAL ENTRY RESTORED) ---
+    # --- SECTION A: STUDENT PERFORMANCE (WITH DELETE) ---
     if nav == "Student Performance (A)":
         st.header("📊 Student Performance Records")
         class_list = list(st.session_state.data_store["Grades_Config"].keys())
         
         if class_list:
-            with st.expander("➕ Add Manual Record"):
+            with st.expander("➕ Add Manual Entry"):
                 sel_class = st.selectbox("Select Class", class_list)
                 sel_sub = st.selectbox("Select Subject", st.session_state.data_store["Grades_Config"][sel_class])
                 with st.form("manual_a_form"):
                     c1,c2,c3,c4 = st.columns(4)
-                    ga = c1.number_input("A Grade Count", min_value=0)
-                    gb = c2.number_input("B Grade Count", min_value=0)
-                    gc = c3.number_input("C Grade Count", min_value=0)
-                    gd = c4.number_input("D Grade Count", min_value=0)
-                    if st.form_submit_button("Save Performance Record"):
+                    ga = c1.number_input("A Grade", min_value=0)
+                    gb = c2.number_input("B Grade", min_value=0)
+                    gc = c3.number_input("C Grade", min_value=0)
+                    gd = c4.number_input("D Grade", min_value=0)
+                    if st.form_submit_button("Save Record"):
                         score = calculate_predictive_score(ga, gb, gc, gd)
                         st.session_state.data_store["A"].append({
                             "Class": sel_class, "Subject": sel_sub,
                             "A": ga, "B": gb, "C": gc, "D": gd, 
                             "Predictive Score": score
                         })
-                        st.success("Record Saved!")
                         st.rerun()
 
         if st.session_state.data_store["A"]:
             df_a = pd.DataFrame(st.session_state.data_store["A"])
             st.dataframe(df_a)
-            if st.button("🗑️ Clear All Performance Data"):
-                st.session_state.data_store["A"] = []
+            
+            # Delete Logic for Section A
+            st.markdown("---")
+            idx_del_a = st.selectbox("Select Record ID to Delete", df_a.index, key="del_a_idx")
+            if st.button("🗑️ Delete Selected Performance Record"):
+                st.session_state.data_store["A"].pop(idx_del_a)
+                st.warning("Record Deleted!")
                 st.rerun()
 
-    # --- SECTION B: TEACHER REGISTRY ---
+    # --- SECTION B: TEACHER REGISTRY (WITH DELETE) ---
     elif nav == "Teacher Experts (B)":
         st.header("👨‍🏫 Teacher Registry")
         with st.form("manual_t_form"):
@@ -176,14 +180,21 @@ else:
             t_success = st.number_input("Success Rate (%)", 0, 100)
             if st.form_submit_button("Register Teacher"):
                 st.session_state.data_store["B"].append({"Name": t_name, "Expertise": t_exp, "Success": t_success})
-                st.success("Teacher Registered!")
                 st.rerun()
 
         if st.session_state.data_store["B"]:
             df_b = pd.DataFrame(st.session_state.data_store["B"])
             st.dataframe(df_b)
+            
+            # Delete Logic for Section B
+            st.markdown("---")
+            idx_del_b = st.selectbox("Select Teacher ID to Delete", df_b.index, key="del_b_idx")
+            if st.button("🗑️ Delete Selected Teacher"):
+                st.session_state.data_store["B"].pop(idx_del_b)
+                st.warning("Teacher Removed!")
+                st.rerun()
 
-    # --- SECTION C: EFFICIENCY MAPPING (SEPARATE PDFS) ---
+    # --- SECTION C: EFFICIENCY MAPPING ---
     elif nav == "Efficiency Mapping (C)":
         st.header("🎯 Efficiency Mapping & Separate Reports")
         if st.button("🔄 Auto-Map All Teachers"):
@@ -210,14 +221,13 @@ else:
             best_df = df_full[df_full["Status"] == "BEST TEACHER"]
             improve_df = df_full[df_full["Status"].isin(["IMPROVEMENT NEEDED", "NO DATA FOUND"])]
             
-            st.markdown("---")
             c1, c2 = st.columns(2)
             with c1: 
                 if not best_df.empty:
-                    st.download_button("📥 Download Best Teachers PDF", create_pdf(best_df, "Best Teachers"), "Best_Teachers_Report.pdf")
+                    st.download_button("📥 Download Best Teachers PDF", create_pdf(best_df, "Best Teachers"), "Best_Teachers.pdf")
             with c2: 
                 if not improve_df.empty:
-                    st.download_button("📥 Download Improvement PDF", create_pdf(improve_df, "Improvement List"), "Improvement_Needed_Report.pdf")
+                    st.download_button("📥 Download Improvement PDF", create_pdf(improve_df, "Improvement List"), "Improvement_List.pdf")
 
     # --- SECTION D: TEACHER PORTAL ---
     elif nav == "Teacher Portal":
@@ -229,5 +239,3 @@ else:
             if report_data:
                 st.dataframe(pd.DataFrame(report_data))
                 st.download_button(f"📥 Download {selected}'s PDF", create_pdf(report_data, f"Teacher Report: {selected}"), f"{selected}_Report.pdf")
-            else:
-                st.info("No data found. Run Auto-Map in Section C first.")

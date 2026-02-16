@@ -50,30 +50,55 @@ def create_pdf(data, title):
     pdf = SchoolPDF()
     pdf.add_page()
     df = pd.DataFrame(data)
-    
     pdf.set_font('Arial', 'B', 12)
-    pdf.cell(0, 10, f"REPORT TYPE: {title.upper()}", 0, 1, 'L')
+    pdf.cell(0, 10, f"REPORT: {title.upper()}", 0, 1, 'L')
     pdf.ln(5)
-    
     if not df.empty:
-        col_count = len(df.columns)
-        w = 190 / col_count 
-        
+        w = 190 / len(df.columns)
         pdf.set_font('Arial', 'B', 8)
         pdf.set_fill_color(230, 230, 230)
         for col in df.columns:
             pdf.cell(w, 10, str(col), 1, 0, 'C', fill=True)
         pdf.ln()
-        
         pdf.set_font('Arial', '', 7)
         for _, row in df.iterrows():
             for col in df.columns:
                 pdf.cell(w, 8, str(row[col]), 1, 0, 'C')
             pdf.ln()
-            
     return pdf.output(dest='S').encode('latin-1')
 
-# --- 3. UI & NAVIGATION ---
+# --- 3. BULK UPLOAD LOGIC (RESTORED) ---
+def handle_bulk_upload():
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📂 Excel Data Import")
+    upload_type = st.sidebar.selectbox("Category", ["Classes", "Student Performance", "Teachers"], key="upload_sel")
+    uploaded_file = st.sidebar.file_uploader(f"Choose {upload_type} Excel File", type=["xlsx"], key="file_up")
+
+    if uploaded_file is not None:
+        if st.sidebar.button(f"Confirm Import: {upload_type}"):
+            try:
+                df = pd.read_excel(uploaded_file).fillna('')
+                if upload_type == "Classes":
+                    for _, row in df.iterrows():
+                        key = f"{row['Grade']}-{row['Section']}"
+                        st.session_state.data_store["Grades_Config"][key] = [s.strip() for s in str(row['Subjects']).split(",")]
+                elif upload_type == "Student Performance":
+                    for _, row in df.iterrows():
+                        p_score = calculate_predictive_score(int(row['A']), int(row['B']), int(row['C']), int(row['D']))
+                        st.session_state.data_store["A"].append({
+                            "Class": str(row['Class']), "Subject": str(row['Subject']),
+                            "A": int(row['A']), "B": int(row['B']), "C": int(row['C']), "D": int(row['D']),
+                            "Predictive Score": p_score
+                        })
+                elif upload_type == "Teachers":
+                    for _, row in df.iterrows():
+                        st.session_state.data_store["B"].append({"Name": row['Name'], "Expertise": row['Expertise'], "Success": row['Success']})
+                st.sidebar.success("Import Successful!")
+                st.rerun()
+            except Exception as e:
+                st.sidebar.error(f"Error: {e}")
+
+# --- 4. MAIN INTERFACE ---
 if not st.session_state.authenticated:
     st.title("🔐 Secure Access")
     pwd = st.text_input("Enter Activation Key", type="password")
@@ -83,34 +108,55 @@ if not st.session_state.authenticated:
             st.rerun()
 
 elif not st.session_state.setup_complete:
+    handle_bulk_upload()
     st.title("⚙️ Institution Setup")
     st.session_state.data_store["School_Name"] = st.text_input("School Name", "Global International Academy")
-    if st.button("🚀 Enter Dashboard"):
-        st.session_state.setup_complete = True
-        st.rerun()
+    
+    st.subheader("Manual Class Configuration")
+    c1, c2 = st.columns(2)
+    g_name = c1.selectbox("Grade", [f"Grade {i}" for i in range(1, 13)])
+    s_name = c2.text_input("Section")
+    sub_input = st.text_area("Subjects (comma separated)", "Math, English, Science")
+    
+    if st.button("Save Class"):
+        if s_name:
+            full_key = f"{g_name}-{s_name}"
+            subjects = [s.strip() for s in sub_input.split(",") if s.strip()]
+            st.session_state.data_store["Grades_Config"][full_key] = subjects
+            st.success(f"Added {full_key}")
+    
+    if st.session_state.data_store["Grades_Config"]:
+        if st.button("🚀 Enter Dashboard"):
+            st.session_state.setup_complete = True
+            st.rerun()
 
 else:
     st.title(f"🏫 {st.session_state.data_store['School_Name']}")
+    handle_bulk_upload()
     nav = st.sidebar.selectbox("Main Menu", ["Student Performance (A)", "Teacher Experts (B)", "Efficiency Mapping (C)", "Teacher Portal"])
 
-    # --- SECTION C: EFFICIENCY MAPPING ---
-    if nav == "Efficiency Mapping (C)":
+    if nav == "Student Performance (A)":
+        st.header("📊 Student Performance")
+        df_a = pd.DataFrame(st.session_state.data_store["A"])
+        st.dataframe(df_a)
+
+    elif nav == "Teacher Experts (B)":
+        st.header("👨‍🏫 Teacher Registry")
+        df_b = pd.DataFrame(st.session_state.data_store["B"])
+        st.dataframe(df_b)
+
+    elif nav == "Efficiency Mapping (C)":
         st.header("🎯 Efficiency Mapping & Separate Reports")
-        
         if st.button("🔄 Auto-Map All Teachers"):
             st.session_state.data_store["C"] = []
             for teacher in st.session_state.data_store["B"]:
                 relevant_data = [a for a in st.session_state.data_store["A"] if a['Subject'].lower() == teacher['Expertise'].lower()]
-                
                 if relevant_data:
                     for record in relevant_data:
                         status = "BEST TEACHER" if record['Predictive Score'] >= 70 else "IMPROVEMENT NEEDED"
                         st.session_state.data_store["C"].append({
-                            "Class": record['Class'], 
-                            "Subject": teacher['Expertise'], 
-                            "Teacher": teacher['Name'], 
-                            "Predictive Score": record['Predictive Score'],
-                            "Status": status
+                            "Class": record['Class'], "Subject": teacher['Expertise'], "Teacher": teacher['Name'], 
+                            "Predictive Score": record['Predictive Score'], "Status": status
                         })
                 else:
                     st.session_state.data_store["C"].append({
@@ -121,53 +167,19 @@ else:
 
         if st.session_state.data_store["C"]:
             df_full = pd.DataFrame(st.session_state.data_store["C"])
-            st.subheader("Current Mapping Overview")
             st.dataframe(df_full)
+            best_df = df_full[df_full["Status"] == "BEST TEACHER"]
+            improve_df = df_full[df_full["Status"].isin(["IMPROVEMENT NEEDED", "NO DATA FOUND"])]
             
-            # --- SEPARATE PDF GENERATION ---
-            best_teachers_df = df_full[df_full["Status"] == "BEST TEACHER"]
-            improvement_needed_df = df_full[df_full["Status"].isin(["IMPROVEMENT NEEDED", "NO DATA FOUND"])]
-            
-            st.markdown("---")
-            st.subheader("📥 Download Separate Reports")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                if not best_teachers_df.empty:
-                    st.success(f"Found {len(best_teachers_df)} Best Performers")
-                    st.download_button(
-                        label="📥 Download Best Teachers PDF",
-                        data=create_pdf(best_teachers_df, "Best Teachers List"),
-                        file_name="Best_Teachers_Report.pdf",
-                        mime="application/pdf"
-                    )
-                else:
-                    st.info("No 'Best Teacher' records found.")
+            c1, c2 = st.columns(2)
+            with c1: st.download_button("📥 Download Best Teachers PDF", create_pdf(best_df, "Best Teachers"), "Best_Teachers.pdf")
+            with c2: st.download_button("📥 Download Improvement PDF", create_pdf(improve_df, "Improvement List"), "Improvement_List.pdf")
 
-            with col2:
-                if not improvement_needed_df.empty:
-                    st.warning(f"Found {len(improvement_needed_df)} Records for Improvement")
-                    st.download_button(
-                        label="📥 Download Improvement List PDF",
-                        data=create_pdf(improvement_needed_df, "Improvement Needed List"),
-                        file_name="Improvement_Needed_Report.pdf",
-                        mime="application/pdf"
-                    )
-                else:
-                    st.info("No records needing improvement found.")
-
-    # --- TEACHER PORTAL ---
     elif nav == "Teacher Portal":
-        st.header("📜 Teacher Personal Portal")
-        if st.session_state.data_store["B"]:
-            names = [t['Name'] for t in st.session_state.data_store["B"]]
-            selected = st.selectbox("Select Teacher", names)
-            report_data = [x for x in st.session_state.data_store["C"] if x['Teacher'] == selected]
-            
-            if report_data:
-                st.dataframe(pd.DataFrame(report_data))
-                st.download_button(f"📥 Download {selected}'s Individual PDF", create_pdf(report_data, f"Individual Report: {selected}"), f"{selected}_Report.pdf")
-            else:
-                st.info("No data found for this teacher. Please run Auto-Map first.")
-
-    # Remaining sections (A and B) can be added similarly.
+        st.header("📜 Teacher Portal")
+        names = [t['Name'] for t in st.session_state.data_store["B"]]
+        selected = st.selectbox("Select Teacher", names)
+        report_data = [x for x in st.session_state.data_store["C"] if x['Teacher'] == selected]
+        if report_data:
+            st.dataframe(pd.DataFrame(report_data))
+            st.download_button(f"📥 Download {selected}'s PDF", create_pdf(report_data, f"Teacher Report: {selected}"), f"{selected}_Report.pdf")

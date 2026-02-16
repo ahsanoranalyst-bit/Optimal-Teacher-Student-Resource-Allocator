@@ -19,11 +19,10 @@ if 'data_store' not in st.session_state:
 def calculate_predictive_score(a, b, c, d):
     total = a + b + c + d
     if total == 0: return 0
-    # Predictive Score as the 5th point logic
     score = ((a * 100) + (b * 75) + (c * 50) + (d * 25)) / total
     return round(score, 2)
 
-# --- 2. PROFESSIONAL PDF ENGINE ---
+# --- 2. PROFESSIONAL PDF ENGINE (FIXED OVERLAP) ---
 class SchoolPDF(FPDF):
     def header(self):
         self.set_fill_color(31, 73, 125)
@@ -52,19 +51,35 @@ def create_pdf(data, title):
     pdf.set_font('Arial', 'B', 12)
     pdf.cell(0, 10, f"REPORT: {title.upper()}", 0, 1, 'L')
     pdf.ln(5)
+    
     if not df.empty:
-        # Adjusted width for more columns
-        w = 190 / len(df.columns)
+        # Custom widths to prevent overlap
+        col_widths = {
+            "Class": 18, "Subject": 18, "Teacher": 22,
+            "Teacher Success": 22, "Student Score": 20,
+            "Efficiency Index": 20, "Status": 35, "Action Plan": 40
+        }
+        
+        # Table Header
         pdf.set_font('Arial', 'B', 7)
         pdf.set_fill_color(230, 230, 230)
         for col in df.columns:
+            w = col_widths.get(col, 20)
             pdf.cell(w, 10, str(col), 1, 0, 'C', fill=True)
         pdf.ln()
-        pdf.set_font('Arial', '', 6)
+        
+        # Table Rows
         for _, row in df.iterrows():
+            pdf.set_font('Arial', '', 6)
             for col in df.columns:
-                pdf.cell(w, 8, str(row[col]), 1, 0, 'C')
+                w = col_widths.get(col, 20)
+                text = str(row[col])
+                # Shrink font further if text is very long
+                if len(text) > 25: pdf.set_font('Arial', '', 5)
+                else: pdf.set_font('Arial', '', 6)
+                pdf.cell(w, 8, text, 1, 0, 'C')
             pdf.ln()
+            
     return pdf.output(dest='S').encode('latin-1')
 
 # --- 3. BULK UPLOAD LOGIC ---
@@ -93,10 +108,8 @@ def handle_bulk_upload():
                 elif upload_type == "Teachers":
                     for _, row in df.iterrows():
                         st.session_state.data_store["B"].append({
-                            "Name": row['Name'],
-                            "Expertise": row['Expertise'],
-                            "Success": int(row['Success']),
-                            "Assigned Class": str(row['Assigned Class'])
+                            "Name": row['Name'], "Expertise": row['Expertise'],
+                            "Success": int(row['Success']), "Assigned Class": str(row['Assigned Class'])
                         })
                 st.sidebar.success("Import Successful!")
                 st.rerun()
@@ -179,7 +192,7 @@ else:
             t_name = st.text_input("Name")
             t_exp = st.text_input("Expertise")
             t_class = st.selectbox("Assigned Class", class_list) if class_list else st.text_input("Assigned Class")
-            t_success = st.number_input("Success Rate (Past Record)", 0, 100)
+            t_success = st.number_input("Success Rate", 0, 100)
             if st.form_submit_button("Register"):
                 st.session_state.data_store["B"].append({"Name": t_name, "Expertise": t_exp, "Success": t_success, "Assigned Class": t_class})
                 st.rerun()
@@ -193,7 +206,7 @@ else:
                 st.rerun()
 
     elif nav == "Efficiency Mapping (C)":
-        st.header("🎯 Efficiency Mapping & Action Plans")
+        st.header("🎯 Efficiency Mapping")
         if st.button("🔄 Auto-Map Teachers"):
             st.session_state.data_store["C"] = []
             for teacher in st.session_state.data_store["B"]:
@@ -203,67 +216,53 @@ else:
                 
                 if relevant:
                     for r in relevant:
-                        # --- SMART LOGIC INTEGRATION ---
-                        t_success = teacher['Success']
-                        p_score = r['Predictive Score']
+                        ts = teacher['Success']
+                        ps = r['Predictive Score']
+                        combined = (ps * 0.6) + (ts * 0.4)
                         
-                        # Weighted Calculation: 60% Class Results, 40% Teacher History
-                        combined_index = (p_score * 0.6) + (t_success * 0.4)
-                        
-                        # Diagnostic Logic
-                        if combined_index >= 85:
-                            status = "GOLD STANDARD"
-                            action = "Promote as Mentor"
-                        elif p_score < 50 and t_success < 50:
-                            status = "CRITICAL: DOUBLE ACTION"
-                            action = "Teacher Training & Remedial Student Classes"
-                        elif p_score < 50 and t_success >= 70:
-                            status = "CLASS AT RISK"
-                            action = "Focus on Student Basics / Extra Classes"
-                        elif p_score >= 70 and t_success < 50:
-                            status = "SKILL GAP"
-                            action = "Teacher Subject-Matter Training Required"
-                        elif combined_index >= 70:
-                            status = "BEST TEACHER"
-                            action = "Maintain Performance"
-                        else:
-                            status = "IMPROVEMENT NEEDED"
-                            action = "Closer Monitoring Required"
+                        if combined >= 85: 
+                            status, action = "GOLD STANDARD", "Promote as Mentor"
+                        elif ps < 50 and ts < 50: 
+                            status, action = "CRITICAL: DOUBLE ACTION", "Teacher Training & Remedial Classes"
+                        elif ps < 50 and ts >= 70: 
+                            status, action = "CLASS AT RISK", "Focus on Student Basics"
+                        elif ps >= 70 and ts < 50: 
+                            status, action = "SKILL GAP", "Teacher Subject Training Required"
+                        elif combined >= 70: 
+                            status, action = "BEST TEACHER", "Maintain Performance"
+                        else: 
+                            status, action = "IMPROVEMENT NEEDED", "Closer Monitoring Required"
 
                         st.session_state.data_store["C"].append({
                             "Class": r['Class'], "Subject": teacher['Expertise'], "Teacher": teacher['Name'],
-                            "Teacher Success": t_success, "Student Score": p_score, 
-                            "Efficiency Index": round(combined_index, 2), "Status": status, "Action Plan": action
+                            "Teacher Success": ts, "Student Score": ps, 
+                            "Efficiency Index": round(combined, 2), "Status": status, "Action Plan": action
                         })
                 else:
                     st.session_state.data_store["C"].append({
                         "Class": teacher['Assigned Class'], "Subject": teacher['Expertise'], "Teacher": teacher['Name'],
                         "Teacher Success": teacher['Success'], "Student Score": 0, 
-                        "Efficiency Index": 0, "Status": "NO CURRENT DATA", "Action Plan": "Conduct Assessment"
+                        "Efficiency Index": 0, "Status": "NO DATA", "Action Plan": "Assess Class"
                     })
-            st.success("Mapping Completed with Smart Action Plans!")
+            st.success("Mapping Completed!")
 
         if st.session_state.data_store["C"]:
             df_c = pd.DataFrame(st.session_state.data_store["C"])
-            st.dataframe(df_c)
+            st.dataframe(df_c, use_container_width=True) # Wide screen view
             best = df_c[df_c["Status"].isin(["BEST TEACHER", "GOLD STANDARD"])]
             improve = df_c[~df_c["Status"].isin(["BEST TEACHER", "GOLD STANDARD"])]
-            col1, col2 = st.columns(2)
-            with col1: st.download_button("📥 Download Excellence Report", create_pdf(best, "Excellence Report"), "Excellence.pdf")
-            with col2: st.download_button("📥 Download Action Plan Report", create_pdf(improve, "Required Actions"), "Action_Plan.pdf")
+            c1, c2 = st.columns(2)
+            c1.download_button("📥 Best PDF", create_pdf(best, "Excellence"), "Excellence.pdf")
+            c2.download_button("📥 Action PDF", create_pdf(improve, "Action Required"), "Actions.pdf")
 
     elif nav == "Teacher Portal":
-        st.header("📜 Comprehensive Teacher Report")
+        st.header("📜 Individual Teacher Portal")
         if st.session_state.data_store["B"]:
             t_names = list(set([t['Name'] for t in st.session_state.data_store["B"]]))
             sel_t = st.selectbox("Select Teacher", t_names)
-            
-            # Filtering all records for this specific teacher across different classes
             t_data = [x for x in st.session_state.data_store["C"] if x['Teacher'] == sel_t]
-            
             if t_data:
-                st.subheader(f"Performance Summary for {sel_t}")
-                st.dataframe(pd.DataFrame(t_data))
-                st.download_button(f"📥 Download Full Profile: {sel_t}", create_pdf(t_data, f"Individual Analysis: {sel_t}"), f"{sel_t}_Report.pdf")
+                st.dataframe(pd.DataFrame(t_data), use_container_width=True)
+                st.download_button(f"📥 Download {sel_t}'s Report", create_pdf(t_data, f"Report: {sel_t}"), f"{sel_t}.pdf")
             else:
-                st.info("No mapped data found for this teacher. Please run 'Auto-Map Teachers' in Efficiency Mapping.")
+                st.info("Run Auto-Map first.")

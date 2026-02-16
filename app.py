@@ -61,13 +61,12 @@ def create_pdf(data, title):
     pdf.ln(5)
     
     if not df.empty:
-        # Columns now include Predictive Score as requested
         column_widths = {
             "Institution": 45,
             "Class": 20,
             "Subject": 25,
             "Teacher": 35,
-            "Predictive Score": 35, # 5th Point
+            "Predictive Score": 35,
             "Status": 30
         }
         default_w = 190 / len(df.columns)
@@ -173,7 +172,6 @@ else:
     if nav == "Student Performance (A)":
         st.header("📊 Performance Records & Prediction")
         display_key = "A"
-        # ... (Manual Entry Form remains same) ...
         class_list = list(st.session_state.data_store["Grades_Config"].keys())
         if class_list:
             with st.expander("➕ Manual Entry"):
@@ -206,9 +204,8 @@ else:
                 st.rerun()
 
     elif nav == "Efficiency Mapping (C)":
-        st.header("🎯 Strategic Deployment (Fancy Mapping)")
+        st.header("🎯 Strategic Deployment & Swapping Logic")
         display_key = "C"
-        
         if st.session_state.data_store["A"] and st.session_state.data_store["B"]:
             options = [f"{x['Class']} | {x['Subject']}" for x in st.session_state.data_store["A"]]
             sel = st.selectbox("Analyze Needs", options)
@@ -222,47 +219,55 @@ else:
                 
                 col1, col2 = st.columns(2)
                 col1.metric("Current Predictive Score", f"{class_data['Predictive Score']}%")
-                col2.metric("Target (Teacher Rating)", f"{best_t['Success']}%")
+                col2.metric("Target (Teacher Rating)", f"{best_t['Success']}%", f"{best_t['Success'] - class_data['Predictive Score']}% Improvement")
 
+                if class_data['Predictive Score'] < 50:
+                    st.error("⚠️ HIGH RISK: Immediate teacher swapping required.")
+                
+                st.info(f"Recommended Deployment: **{best_t['Name']}**")
+                
                 if st.button("Authorize Allocation"):
-                    status = "BEST TEACHER" if best_t['Success'] >= 80 else "REGULAR TEACHER"
+                    # Split Logic based on performance score
+                    status = "BEST TEACHER" if class_data['Predictive Score'] >= 50 else "PROMOTE TEACHER"
                     st.session_state.data_store["C"].append({
                         "Institution": st.session_state.data_store["School_Name"],
                         "Class": parts[0], "Subject": parts[1],
                         "Teacher": best_t['Name'],
-                        "Predictive Score": class_data['Predictive Score'], # Added as 5th point
+                        "Predictive Score": class_data['Predictive Score'],
                         "Status": status
                     })
-                    st.success(f"Allocation Authorized as {status}")
+                    st.success(f"Allocation Authorized as {status}.")
                     st.rerun()
 
-        # --- SEPARATED LISTS & PDF GENERATION ---
+        # Display Split Tables and PDF Buttons
         if st.session_state.data_store["C"]:
             st.divider()
             df_mapping = pd.DataFrame(st.session_state.data_store["C"])
             
-            # Splitting Logic
-            best_teachers_df = df_mapping[df_mapping['Status'] == "BEST TEACHER"]
-            regular_teachers_df = df_mapping[df_mapping['Status'] == "REGULAR TEACHER"]
+            best_df = df_mapping[df_mapping['Status'] == "BEST TEACHER"]
+            promote_df = df_mapping[df_mapping['Status'] == "PROMOTE TEACHER"]
             
             col_a, col_b = st.columns(2)
-            
             with col_a:
                 st.subheader("🌟 Best Teachers List")
-                st.dataframe(best_teachers_df)
-                if not best_teachers_df.empty:
-                    pdf_best = create_pdf(best_teachers_df.to_dict('records'), "Best Teachers Report")
-                    st.download_button("📥 Download Best Teachers PDF", pdf_best, "Best_Teachers.pdf")
+                st.dataframe(best_df)
+                if not best_df.empty:
+                    pdf_best = create_pdf(best_df.to_dict('records'), "Best Teachers Report")
+                    st.download_button("📥 Download Best PDF", pdf_best, "Best_Teachers.pdf")
 
             with col_b:
-                st.subheader("📋 Regular Teachers List")
-                st.dataframe(regular_teachers_df)
-                if not regular_teachers_df.empty:
-                    pdf_reg = create_pdf(regular_teachers_df.to_dict('records'), "Regular Teachers Report")
-                    st.download_button("📥 Download Regular Teachers PDF", pdf_reg, "Regular_Teachers.pdf")
+                st.subheader("📈 Promote Teachers List")
+                st.dataframe(promote_df)
+                if not promote_df.empty:
+                    pdf_promote = create_pdf(promote_df.to_dict('records'), "Promote Teachers Report")
+                    st.download_button("📥 Download Promote PDF", pdf_promote, "Promote_Teachers.pdf")
 
-    # Standard display for A and B
+    # Generic Table View for Nav A & B
     if display_key and display_key != "C" and st.session_state.data_store[display_key]:
         st.divider()
+        st.subheader(f"📋 Records: {nav}")
         df_view = pd.DataFrame(st.session_state.data_store[display_key])
         st.dataframe(df_view, use_container_width=True)
+        
+        pdf_bytes = create_pdf(st.session_state.data_store[display_key], nav)
+        st.download_button(f"📥 Download {nav} PDF", pdf_bytes, f"Report_{nav}.pdf")

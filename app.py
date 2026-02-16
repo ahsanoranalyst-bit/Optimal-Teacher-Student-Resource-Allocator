@@ -1,5 +1,3 @@
-
-
 import streamlit as st
 import pandas as pd
 from fpdf import FPDF
@@ -31,243 +29,151 @@ class SchoolPDF(FPDF):
         self.set_fill_color(31, 73, 125)
         self.rect(0, 0, 210, 35, 'F')
         self.set_text_color(255, 255, 255)
-        self.set_font('Arial', 'B', 18)
-        school_name = st.session_state.data_store.get("School_Name", "GLOBAL INTERNATIONAL ACADEMY").upper()
+        self.set_font('Arial', 'B', 16)
+        school_name = st.session_state.data_store.get("School_Name", "GLOBAL ACADEMY").upper()
         self.cell(0, 12, school_name, 0, 1, 'C')
         self.set_font('Arial', 'I', 10)
-        self.cell(0, 8, "OFFICIAL ACADEMIC PERFORMANCE & DEPLOYMENT REPORT", 0, 1, 'C')
-        self.set_text_color(0, 0, 0)
+        self.cell(0, 8, "OFFICIAL ADMINISTRATION & PERFORMANCE REPORT", 0, 1, 'C')
         self.ln(15)
 
     def footer(self):
-        self.set_y(-30)
+        self.set_y(-25)
         self.set_font('Arial', 'I', 8)
         self.set_text_color(120, 120, 120)
-        self.cell(0, 10, "__________________________", 0, 1, 'R')
-        self.cell(0, 5, "Authorized Signature & Official Stamp", 0, 1, 'R')
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
-        self.cell(0, 10, f"Report Date: {timestamp} | Page {self.page_no()}", 0, 0, 'L')
+        self.cell(0, 10, f"Report Generated: {timestamp} | Page {self.page_no()}", 0, 0, 'L')
+        self.cell(0, 10, "Admin Signature: ________________", 0, 0, 'R')
 
 def create_pdf(data, title):
     pdf = SchoolPDF()
     pdf.add_page()
     df = pd.DataFrame(data)
-    
     pdf.set_font('Arial', 'B', 12)
     pdf.set_text_color(31, 73, 125)
-    pdf.cell(0, 10, f"DOCUMENT SECTION: {title.upper()}", 0, 1, 'L')
-    pdf.set_draw_color(31, 73, 125)
-    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.cell(0, 10, f"REPORT CATEGORY: {title.upper()}", 0, 1, 'L')
     pdf.ln(5)
     
     if not df.empty:
-        column_widths = {
-            "Institution": 45,
-            "Class": 20,
-            "Subject": 25,
-            "Teacher": 35,
-            "Predictive Score": 35,
-            "Status": 30
-        }
-        default_w = 190 / len(df.columns)
-
+        # Columns arrangement: Predictive Score as 5th point
+        col_order = ["Institution", "Class", "Subject", "Teacher", "Predictive Score", "Status"]
+        df = df[col_order] if all(c in df.columns for c in col_order) else df
+        
+        column_widths = {"Institution": 40, "Class": 20, "Subject": 25, "Teacher": 35, "Predictive Score": 35, "Status": 35}
+        
         pdf.set_font('Arial', 'B', 8)
         pdf.set_fill_color(230, 235, 245)
         for col in df.columns:
-            w = column_widths.get(col, default_w)
-            pdf.cell(w, 10, str(col), 1, 0, 'C', fill=True)
+            pdf.cell(column_widths.get(col, 30), 10, str(col), 1, 0, 'C', fill=True)
         pdf.ln()
         
         pdf.set_font('Arial', '', 8)
-        fill = False
         for _, row in df.iterrows():
-            pdf.set_fill_color(248, 248, 248) if fill else pdf.set_fill_color(255, 255, 255)
             for col in df.columns:
-                val = str(row[col]) if pd.notnull(row[col]) else ""
-                w = column_widths.get(col, default_w)
-                pdf.cell(w, 9, val, 1, 0, 'C', fill=True)
+                pdf.cell(column_widths.get(col, 30), 9, str(row[col]), 1, 0, 'C')
             pdf.ln()
-            fill = not fill
-            
     return pdf.output(dest='S').encode('latin-1')
 
-# --- 3. BULK UPLOAD LOGIC ---
-def handle_bulk_upload():
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("📂 Excel Data Import")
-    upload_type = st.sidebar.selectbox("Category", ["Classes", "Student Performance", "Teachers"], key="upload_sel")
-    uploaded_file = st.sidebar.file_uploader(f"Choose {upload_type} Excel File", type=["xlsx"], key="file_up")
-
-    if uploaded_file is not None:
-        if st.sidebar.button(f"Confirm Import: {upload_type}"):
-            try:
-                df = pd.read_excel(uploaded_file).fillna('')
-                df.columns = [str(c).strip() for c in df.columns]
-                
-                if upload_type == "Classes":
-                    for _, row in df.iterrows():
-                        key = f"{row['Grade']}-{row['Section']}"
-                        subs = [s.strip() for s in str(row['Subjects']).split(",")]
-                        st.session_state.data_store["Grades_Config"][key] = subs
-                elif upload_type == "Student Performance":
-                    for col in ['A', 'B', 'C', 'D']:
-                        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-                    for _, row in df.iterrows():
-                        p_score = calculate_predictive_score(int(row['A']), int(row['B']), int(row['C']), int(row['D']))
-                        st.session_state.data_store["A"].append({
-                            "Class": str(row['Class']), "Subject": str(row['Subject']),
-                            "A": int(row['A']), "B": int(row['B']), "C": int(row['C']), "D": int(row['D']),
-                            "Total": int(row['A']+row['B']+row['C']+row['D']),
-                            "Predictive Score": p_score
-                        })
-                elif upload_type == "Teachers":
-                    for _, row in df.iterrows():
-                        st.session_state.data_store["B"].append({
-                            "Name": row['Name'], "Expertise": row['Expertise'], "Success": row['Success']
-                        })
-                st.sidebar.success("Data Imported Successfully!")
-                st.rerun()
-            except Exception as e:
-                st.sidebar.error(f"Error: {e}")
-
-# --- 4. NAVIGATION & UI ---
+# --- 3. MAIN APPLICATION ---
 if not st.session_state.authenticated:
-    st.title("🔐 Secure Access")
-    key_input = st.text_input("Enter System Key", type="password")
-    if st.button("Authenticate"):
-        if key_input == ACTIVATION_KEY:
+    st.title("🔐 Admin Login")
+    key = st.text_input("System Key", type="password")
+    if st.button("Unlock System"):
+        if key == ACTIVATION_KEY:
             st.session_state.authenticated = True
             st.rerun()
-        else: st.error("Invalid Key")
 
 elif not st.session_state.setup_complete:
-    handle_bulk_upload()
-    st.title("⚙️ Institution Setup")
+    st.title("⚙️ Initial Setup")
     st.session_state.data_store["School_Name"] = st.text_input("School Name", "Global International Academy")
-    
-    st.subheader("Manual Class Configuration")
-    c1, c2 = st.columns(2)
-    g_name = c1.selectbox("Grade", [f"Grade {i}" for i in range(1, 13)])
-    s_name = c2.text_input("Section")
-    sub_input = st.text_area("Subjects (comma separated)", "Math, English, Science")
-    
-    if st.button("Save Class"):
-        if s_name:
-            full_key = f"{g_name}-{s_name}"
-            subjects = [s.strip() for s in sub_input.split(",") if s.strip()]
-            st.session_state.data_store["Grades_Config"][full_key] = subjects
-            st.success(f"Added {full_key}")
-    
-    if st.session_state.data_store["Grades_Config"]:
-        if st.button("🚀 Enter Dashboard"):
-            st.session_state.setup_complete = True
-            st.rerun()
+    if st.button("Save & Open Dashboard"):
+        st.session_state.setup_complete = True
+        st.rerun()
 
 else:
-    st.title(f"🏫 {st.session_state.data_store['School_Name']}")
-    handle_bulk_upload()
-    nav = st.sidebar.selectbox("Main Menu", ["Student Performance (A)", "Teacher Experts (B)", "Efficiency Mapping (C)"])
+    st.sidebar.title("ADMIN PANEL")
+    nav = st.sidebar.selectbox("Navigation", ["Students (A)", "Teachers (B)", "Mapping & Reports (C)"])
 
-    display_key = None
-    if nav == "Student Performance (A)":
-        st.header("📊 Performance Records & Prediction")
-        display_key = "A"
-        class_list = list(st.session_state.data_store["Grades_Config"].keys())
-        if class_list:
-            with st.expander("➕ Manual Entry"):
-                sel_class = st.selectbox("Class", class_list)
-                sel_sub = st.selectbox("Subject", st.session_state.data_store["Grades_Config"][sel_class])
-                with st.form("a_form"):
-                    c1,c2,c3,c4 = st.columns(4)
-                    ga,gb,gc,gd = c1.number_input("A",0), c2.number_input("B",0), c3.number_input("C",0), c4.number_input("D",0)
-                    if st.form_submit_button("Save & Calculate Score"):
-                        p_score = calculate_predictive_score(ga, gb, gc, gd)
-                        st.session_state.data_store["A"].append({
-                            "Class": sel_class, "Subject": sel_sub,
-                            "A": ga, "B": gb, "C": gc, "D": gd,
-                            "Total": ga+gb+gc+gd,
-                            "Predictive Score": p_score
-                        })
-                        st.rerun()
+    if nav == "Students (A)":
+        st.header("📊 Student Performance Entry")
+        with st.form("manual_a"):
+            c1, c2 = st.columns(2)
+            cls = c1.text_input("Class/Grade")
+            sub = c2.text_input("Subject")
+            g1, g2, g3, g4 = st.columns(4)
+            a = g1.number_input("A", 0)
+            b = g2.number_input("B", 0)
+            c = g3.number_input("C", 0)
+            d = g4.number_input("D", 0)
+            if st.form_submit_button("Save Record"):
+                score = calculate_predictive_score(a, b, c, d)
+                st.session_state.data_store["A"].append({"Class": cls, "Subject": sub, "Predictive Score": score})
+                st.success("Record Saved")
 
-    elif nav == "Teacher Experts (B)":
-        st.header("👨‍🏫 Faculty Specialization")
-        display_key = "B"
-        all_subs = set()
-        for s_list in st.session_state.data_store["Grades_Config"].values(): all_subs.update(s_list)
-        with st.form("b_form"):
-            t_name = st.text_input("Teacher Name")
-            t_exp = st.selectbox("Expertise", list(all_subs) if all_subs else ["N/A"])
-            t_rate = st.slider("Historical Success %", 0, 100, 80)
-            if st.form_submit_button("Register"):
-                st.session_state.data_store["B"].append({"Name": t_name, "Expertise": t_exp, "Success": t_rate})
-                st.rerun()
+    elif nav == "Teachers (B)":
+        st.header("👨‍🏫 Faculty Registration")
+        with st.form("manual_b"):
+            name = st.text_input("Teacher Name")
+            exp = st.text_input("Expertise (Subject)")
+            rate = st.slider("Success Rate", 0, 100, 75)
+            if st.form_submit_button("Register Teacher"):
+                st.session_state.data_store["B"].append({"Name": name, "Expertise": exp, "Success": rate})
+                st.success("Teacher Added")
 
-    elif nav == "Efficiency Mapping (C)":
-        st.header("🎯 Strategic Deployment & Swapping Logic")
-        display_key = "C"
-        if st.session_state.data_store["A"] and st.session_state.data_store["B"]:
-            options = [f"{x['Class']} | {x['Subject']}" for x in st.session_state.data_store["A"]]
-            sel = st.selectbox("Analyze Needs", options)
-            parts = sel.split(" | ")
-            
-            class_data = next((x for x in st.session_state.data_store["A"] if x['Class'] == parts[0] and x['Subject'] == parts[1]), None)
-            matches = [t for t in st.session_state.data_store["B"] if t['Expertise'] == parts[1]]
-            
-            if matches and class_data:
-                best_t = sorted(matches, key=lambda x: x['Success'], reverse=True)[0]
-                
-                col1, col2 = st.columns(2)
-                col1.metric("Current Predictive Score", f"{class_data['Predictive Score']}%")
-                col2.metric("Target (Teacher Rating)", f"{best_t['Success']}%", f"{best_t['Success'] - class_data['Predictive Score']}% Improvement")
-
-                if class_data['Predictive Score'] < 50:
-                    st.error("⚠️ HIGH RISK: Immediate teacher swapping required.")
-                
-                st.info(f"Recommended Deployment: **{best_t['Name']}**")
-                
-                if st.button("Authorize Allocation"):
-                    # Split Logic based on performance score
-                    status = "BEST TEACHER" if class_data['Predictive Score'] >= 50 else "PROMOTE TEACHER"
+    elif nav == "Mapping & Reports (C)":
+        st.header("🎯 Efficiency Mapping & Admin Reports")
+        
+        # Mapping Logic
+        if st.session_state.data_store["A"]:
+            st.subheader("Assign & Categorize")
+            for i, record in enumerate(st.session_state.data_store["A"]):
+                col1, col2 = st.columns([3, 1])
+                col1.write(f"**{record['Class']}** - {record['Subject']} (Score: {record['Predictive Score']}%)")
+                if col2.button(f"Map Record {i}"):
+                    # Logic for Admin PDF separation
+                    score = record['Predictive Score']
+                    if score >= 75: status = "BEST TEACHER"
+                    elif 45 <= score < 75: status = "PROMOTE TEACHER"
+                    else: status = "IMPROVEMENT REQUIRED"
+                    
                     st.session_state.data_store["C"].append({
                         "Institution": st.session_state.data_store["School_Name"],
-                        "Class": parts[0], "Subject": parts[1],
-                        "Teacher": best_t['Name'],
-                        "Predictive Score": class_data['Predictive Score'],
-                        "Status": status
+                        "Class": record['Class'], "Subject": record['Subject'],
+                        "Teacher": "Assigned Staff", "Predictive Score": score, "Status": status
                     })
-                    st.success(f"Allocation Authorized as {status}.")
                     st.rerun()
 
-        # Display Split Tables and PDF Buttons
+        # Admin Reports Section
         if st.session_state.data_store["C"]:
             st.divider()
-            df_mapping = pd.DataFrame(st.session_state.data_store["C"])
+            st.subheader("📁 Admin Master Reports")
+            df_master = pd.DataFrame(st.session_state.data_store["C"])
             
-            best_df = df_mapping[df_mapping['Status'] == "BEST TEACHER"]
-            promote_df = df_mapping[df_mapping['Status'] == "PROMOTE TEACHER"]
+            # Separate Lists
+            best_list = df_master[df_master['Status'] == "BEST TEACHER"]
+            promote_list = df_master[df_master['Status'] == "PROMOTE TEACHER"]
+            improve_list = df_master[df_master['Status'] == "IMPROVEMENT REQUIRED"]
+
+            # Display and Download Buttons
+            c1, c2, c3 = st.columns(3)
             
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.subheader("🌟 Best Teachers List")
-                st.dataframe(best_df)
-                if not best_df.empty:
-                    pdf_best = create_pdf(best_df.to_dict('records'), "Best Teachers Report")
-                    st.download_button("📥 Download Best PDF", pdf_best, "Best_Teachers.pdf")
+            with c1:
+                st.info("🌟 Best List")
+                st.dataframe(best_list)
+                if not best_list.empty:
+                    st.download_button("Download Best PDF", create_pdf(best_list.to_dict('records'), "Best Teachers"), "Best_Report.pdf")
 
-            with col_b:
-                st.subheader("📈 Promote Teachers List")
-                st.dataframe(promote_df)
-                if not promote_df.empty:
-                    pdf_promote = create_pdf(promote_df.to_dict('records'), "Promote Teachers Report")
-                    st.download_button("📥 Download Promote PDF", pdf_promote, "Promote_Teachers.pdf")
+            with c2:
+                st.warning("📈 Promote List")
+                st.dataframe(promote_list)
+                if not promote_list.empty:
+                    st.download_button("Download Promote PDF", create_pdf(promote_list.to_dict('records'), "Promote List"), "Promote_Report.pdf")
 
-    # Generic Table View for Nav A & B
-    if display_key and display_key != "C" and st.session_state.data_store[display_key]:
-        st.divider()
-        st.subheader(f"📋 Records: {nav}")
-        df_view = pd.DataFrame(st.session_state.data_store[display_key])
-        st.dataframe(df_view, use_container_width=True)
-        
-        pdf_bytes = create_pdf(st.session_state.data_store[display_key], nav)
-        st.download_button(f"📥 Download {nav} PDF", pdf_bytes, f"Report_{nav}.pdf")
+            with c3:
+                st.error("⚠️ Improve List")
+                st.dataframe(improve_list)
+                if not improve_list.empty:
+                    st.download_button("Download Improve PDF", create_pdf(improve_list.to_dict('records'), "Improvement Required"), "Improvement_Report.pdf")
+
+            if st.button("🗑️ Clear All Mapping Records"):
+                st.session_state.data_store["C"] = []
+                st.rerun()

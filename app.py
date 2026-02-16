@@ -1,9 +1,12 @@
+
+
 import streamlit as st
 import pandas as pd
 from fpdf import FPDF
 from datetime import datetime
 
 # --- 1. CORE INITIALIZATION ---
+# Activation key remains as per your requirement
 ACTIVATION_KEY = "PAK-2026"
 
 if 'authenticated' not in st.session_state: st.session_state.authenticated = False
@@ -19,6 +22,7 @@ if 'data_store' not in st.session_state:
 def calculate_predictive_score(a, b, c, d):
     total = a + b + c + d
     if total == 0: return 0
+    # Weightage: A=100%, B=75%, C=50%, D=25%
     score = ((a * 100) + (b * 75) + (c * 50) + (d * 25)) / total
     return round(score, 2)
 
@@ -50,9 +54,6 @@ def create_pdf(data, title):
     pdf.add_page()
     df = pd.DataFrame(data)
     
-    if "Institution" in df.columns:
-        df["Institution"] = st.session_state.data_store.get("School_Name", "Global International Academy")
-
     pdf.set_font('Arial', 'B', 12)
     pdf.set_text_color(31, 73, 125)
     pdf.cell(0, 10, f"DOCUMENT SECTION: {title.upper()}", 0, 1, 'L')
@@ -61,27 +62,27 @@ def create_pdf(data, title):
     pdf.ln(5)
     
     if not df.empty:
-        column_widths = {
-            "Institution": 50, "Class": 20, "Subject": 25,
-            "Teacher": 35, "Current Score": 30, "Status": 30
-        }
-        default_w = 190 / len(df.columns)
-
-        pdf.set_font('Arial', 'B', 8)
+        # Define columns to display in PDF
+        display_cols = ["Class", "Subject", "Teacher", "Current Score", "Status"]
+        column_widths = {"Class": 30, "Subject": 40, "Teacher": 50, "Current Score": 35, "Status": 35}
+        
+        # Header Row
+        pdf.set_font('Arial', 'B', 9)
         pdf.set_fill_color(230, 235, 245)
-        for col in df.columns:
-            w = column_widths.get(col, default_w)
-            pdf.cell(w, 10, str(col), 1, 0, 'C', fill=True)
+        for col in display_cols:
+            if col in df.columns:
+                pdf.cell(column_widths[col], 10, col, 1, 0, 'C', fill=True)
         pdf.ln()
         
-        pdf.set_font('Arial', '', 8)
+        # Data Rows
+        pdf.set_font('Arial', '', 9)
         fill = False
         for _, row in df.iterrows():
             pdf.set_fill_color(248, 248, 248) if fill else pdf.set_fill_color(255, 255, 255)
-            for col in df.columns:
-                val = str(row[col]) if pd.notnull(row[col]) else ""
-                w = column_widths.get(col, default_w)
-                pdf.cell(w, 9, val, 1, 0, 'C', fill=True)
+            for col in display_cols:
+                if col in df.columns:
+                    val = str(row[col])
+                    pdf.cell(column_widths[col], 9, val, 1, 0, 'C', fill=True)
             pdf.ln()
             fill = not fill
             
@@ -165,16 +166,16 @@ else:
     nav = st.sidebar.selectbox("Main Menu", ["Student Performance (A)", "Teacher Experts (B)", "Efficiency Mapping (C)"])
 
     if nav == "Student Performance (A)":
-        st.header("📊 Performance Records & Prediction")
+        st.header("📊 Student Performance & Prediction")
         class_list = list(st.session_state.data_store["Grades_Config"].keys())
         if class_list:
-            with st.expander("➕ Manual Entry"):
+            with st.expander("➕ Add Performance Record"):
                 sel_class = st.selectbox("Class", class_list)
                 sel_sub = st.selectbox("Subject", st.session_state.data_store["Grades_Config"][sel_class])
                 with st.form("a_form"):
                     c1,c2,c3,c4 = st.columns(4)
                     ga,gb,gc,gd = c1.number_input("A",0), c2.number_input("B",0), c3.number_input("C",0), c4.number_input("D",0)
-                    if st.form_submit_button("Save & Calculate Score"):
+                    if st.form_submit_button("Save & Calculate"):
                         p_score = calculate_predictive_score(ga, gb, gc, gd)
                         st.session_state.data_store["A"].append({
                             "Class": sel_class, "Subject": sel_sub,
@@ -187,35 +188,30 @@ else:
         if st.session_state.data_store["A"]:
             df_view = pd.DataFrame(st.session_state.data_store["A"])
             st.dataframe(df_view, use_container_width=True)
-            pdf_bytes = create_pdf(st.session_state.data_store["A"], "Student Performance Report")
-            st.download_button("📥 Download Performance PDF", pdf_bytes, "Performance_Report.pdf")
 
     elif nav == "Teacher Experts (B)":
-        st.header("👨‍🏫 Faculty Specialization")
+        st.header("👨‍🏫 Faculty Expertise")
         all_subs = set()
         for s_list in st.session_state.data_store["Grades_Config"].values(): all_subs.update(s_list)
         with st.form("b_form"):
             t_name = st.text_input("Teacher Name")
             t_exp = st.selectbox("Expertise", list(all_subs) if all_subs else ["N/A"])
-            t_rate = st.slider("Historical Success %", 0, 100, 80)
-            if st.form_submit_button("Register"):
+            t_rate = st.slider("Historical Success Rate %", 0, 100, 80)
+            if st.form_submit_button("Register Teacher"):
                 st.session_state.data_store["B"].append({"Name": t_name, "Expertise": t_exp, "Success": t_rate})
                 st.rerun()
         
         if st.session_state.data_store["B"]:
-            df_view = pd.DataFrame(st.session_state.data_store["B"])
-            st.dataframe(df_view, use_container_width=True)
-            pdf_bytes = create_pdf(st.session_state.data_store["B"], "Teacher Expertise Report")
-            st.download_button("📥 Download Teacher PDF", pdf_bytes, "Teacher_Report.pdf")
+            st.dataframe(pd.DataFrame(st.session_state.data_store["B"]), use_container_width=True)
 
     elif nav == "Efficiency Mapping (C)":
-        st.header("🎯 Strategic Deployment & PDF Generation")
+        st.header("🎯 Strategic Deployment (Grade-wise Lists)")
         
         if st.session_state.data_store["A"] and st.session_state.data_store["B"]:
-            # --- FORM FOR ALLOCATION ---
-            with st.expander("🆕 Add New Mapping/Allocation"):
+            # --- ALLOCATION SECTION ---
+            with st.expander("🆕 Create New Allocation"):
                 options = [f"{x['Class']} | {x['Subject']}" for x in st.session_state.data_store["A"]]
-                sel = st.selectbox("Select Class & Subject", options)
+                sel = st.selectbox("Analyze Class Need", options)
                 parts = sel.split(" | ")
                 
                 class_data = next((x for x in st.session_state.data_store["A"] if x['Class'] == parts[0] and x['Subject'] == parts[1]), None)
@@ -223,54 +219,56 @@ else:
                 
                 if matches and class_data:
                     best_t = sorted(matches, key=lambda x: x['Success'], reverse=True)[0]
-                    st.write(f"Recommended Teacher: **{best_t['Name']}** (Rating: {best_t['Success']}%)")
+                    st.write(f"Best Teacher Match: **{best_t['Name']}**")
                     st.write(f"Current Class Predictive Score: **{class_data['Predictive Score']}%**")
                     
-                    if st.button("Authorize Allocation"):
+                    if st.button("Authorize Deployment"):
+                        # Logic: Score < 60 means the class/teacher needs improvement
                         status = "BEST PERFORMER" if class_data['Predictive Score'] >= 60 else "NEEDS IMPROVEMENT"
                         st.session_state.data_store["C"].append({
-                            "Institution": st.session_state.data_store["School_Name"],
-                            "Class": parts[0], "Subject": parts[1],
+                            "Class": parts[0], 
+                            "Subject": parts[1],
                             "Teacher": best_t['Name'],
                             "Current Score": class_data['Predictive Score'],
                             "Status": status
                         })
-                        st.success("Allocation Recorded.")
+                        st.success("Deployment Logged.")
                         st.rerun()
 
-            # --- DUAL PDF GENERATION LOGIC ---
+            # --- DUAL REPORT GENERATION ---
             if st.session_state.data_store["C"]:
                 mapping_df = pd.DataFrame(st.session_state.data_store["C"])
+                # Sort by Class (Grade-wise)
+                mapping_df = mapping_df.sort_values(by="Class")
                 
-                # Filter Lists
-                improvement_data = mapping_df[mapping_df['Status'] == "NEEDS IMPROVEMENT"].to_dict('records')
-                best_teacher_data = mapping_df[mapping_df['Status'] == "BEST PERFORMER"].to_dict('records')
+                improvement_list = mapping_df[mapping_df['Status'] == "NEEDS IMPROVEMENT"].to_dict('records')
+                best_list = mapping_df[mapping_df['Status'] == "BEST PERFORMER"].to_dict('records')
                 
                 st.divider()
-                st.subheader("📊 Deployment Statistics")
+                st.subheader("📋 Specialized Performance Reports")
                 
-                col1, col2 = st.columns(2)
+                c1, c2 = st.columns(2)
                 
-                with col1:
-                    st.error(f"🔴 Improvement Needed: {len(improvement_data)}")
-                    if improvement_data:
-                        pdf_imp = create_pdf(improvement_data, "Teacher Improvement List")
-                        st.download_button("📥 Download Improvement PDF", pdf_imp, "Improvement_List.pdf")
+                with c1:
+                    st.error(f"🔴 Improvement Required ({len(improvement_list)})")
+                    if improvement_list:
+                        pdf_imp = create_pdf(improvement_list, "Teacher Improvement List (Grade-wise)")
+                        st.download_button("📥 Download Improvement PDF", pdf_imp, "Improvement_Report.pdf")
                     else:
-                        st.write("No teachers in improvement list.")
+                        st.write("No records found.")
 
-                with col2:
-                    st.success(f"🟢 Best Performers: {len(best_teacher_data)}")
-                    if best_teacher_data:
-                        pdf_best = create_pdf(best_teacher_data, "Best Teacher Performance List")
-                        st.download_button("📥 Download Best Teachers PDF", pdf_best, "Best_Performers_List.pdf")
+                with c2:
+                    st.success(f"🟢 Best Performers ({len(best_list)})")
+                    if best_list:
+                        pdf_best = create_pdf(best_list, "Best Performers List (Grade-wise)")
+                        st.download_button("📥 Download Best Teachers PDF", pdf_best, "Best_Performers_Report.pdf")
                     else:
-                        st.write("No teachers in best performers list.")
+                        st.write("No records found.")
 
                 st.divider()
-                st.write("### 📋 All Active Mappings")
+                st.write("### All Deployment Records (Sorted by Grade)")
                 st.dataframe(mapping_df, use_container_width=True)
                 
-                if st.button("🗑️ Clear All Mappings"):
+                if st.button("🗑️ Reset All Mappings"):
                     st.session_state.data_store["C"] = []
                     st.rerun()

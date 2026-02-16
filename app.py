@@ -231,4 +231,3 @@ else:
             st.divider()
             st.write("### Current Mapping Overview")
             st.dataframe(mapping_df, use_container_width=True)
-

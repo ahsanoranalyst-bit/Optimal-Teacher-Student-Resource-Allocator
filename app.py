@@ -4,7 +4,7 @@ from fpdf import FPDF
 from datetime import datetime
 
 # --- 1. CORE INITIALIZATION ---
-ACTIVATION_KEY = "Ahsan123"
+ACTIVATION_KEY = "PAK-2026"
 
 if 'authenticated' not in st.session_state: st.session_state.authenticated = False
 if 'setup_complete' not in st.session_state: st.session_state.setup_complete = False
@@ -51,7 +51,7 @@ def create_pdf(data, title):
     pdf.set_font('Arial', 'B', 12)
     pdf.cell(0, 10, f"REPORT: {title.upper()}", 0, 1, 'L')
     pdf.ln(5)
-    
+   
     if not df.empty:
         # Custom widths to prevent overlap
         col_widths = {
@@ -59,7 +59,7 @@ def create_pdf(data, title):
             "Teacher Success": 22, "Student Score": 20,
             "Efficiency Index": 20, "Status": 35, "Action Plan": 40
         }
-        
+       
         # Table Header
         pdf.set_font('Arial', 'B', 7)
         pdf.set_fill_color(230, 230, 230)
@@ -67,7 +67,7 @@ def create_pdf(data, title):
             w = col_widths.get(col, 20)
             pdf.cell(w, 10, str(col), 1, 0, 'C', fill=True)
         pdf.ln()
-        
+       
         # Table Rows
         for _, row in df.iterrows():
             pdf.set_font('Arial', '', 6)
@@ -79,7 +79,7 @@ def create_pdf(data, title):
                 else: pdf.set_font('Arial', '', 6)
                 pdf.cell(w, 8, text, 1, 0, 'C')
             pdf.ln()
-            
+           
     return pdf.output(dest='S').encode('latin-1')
 
 # --- 3. BULK UPLOAD LOGIC ---
@@ -129,20 +129,20 @@ elif not st.session_state.setup_complete:
     handle_bulk_upload()
     st.title("⚙️ Institution Setup")
     st.session_state.data_store["School_Name"] = st.text_input("School Name", "Global International Academy")
-    
+   
     st.subheader("Manual Class Configuration")
     c1, c2 = st.columns(2)
     g_name = c1.selectbox("Grade", [f"Grade {i}" for i in range(1, 13)])
     s_name = c2.text_input("Section")
     sub_input = st.text_area("Subjects (comma separated)", "Math, English, Science")
-    
+   
     if st.button("Save Class"):
         if s_name:
             full_key = f"{g_name}-{s_name}"
             subjects = [s.strip() for s in sub_input.split(",") if s.strip()]
             st.session_state.data_store["Grades_Config"][full_key] = subjects
             st.success(f"Added {full_key}")
-    
+   
     if st.session_state.data_store["Grades_Config"]:
         if st.button("🚀 Enter Dashboard"):
             st.session_state.setup_complete = True
@@ -213,35 +213,35 @@ else:
                 relevant = [a for a in st.session_state.data_store["A"]
                            if a['Subject'].lower() == teacher['Expertise'].lower()
                            and a['Class'] == teacher['Assigned Class']]
-                
+               
                 if relevant:
                     for r in relevant:
                         ts = teacher['Success']
                         ps = r['Predictive Score']
                         combined = (ps * 0.6) + (ts * 0.4)
-                        
-                        if combined >= 85: 
+                       
+                        if combined >= 85:
                             status, action = "GOLD STANDARD", "Promote as Mentor"
-                        elif ps < 50 and ts < 50: 
+                        elif ps < 50 and ts < 50:
                             status, action = "CRITICAL: DOUBLE ACTION", "Teacher Training & Remedial Classes"
-                        elif ps < 50 and ts >= 70: 
+                        elif ps < 50 and ts >= 70:
                             status, action = "CLASS AT RISK", "Focus on Student Basics"
-                        elif ps >= 70 and ts < 50: 
+                        elif ps >= 70 and ts < 50:
                             status, action = "SKILL GAP", "Teacher Subject Training Required"
-                        elif combined >= 70: 
+                        elif combined >= 70:
                             status, action = "BEST TEACHER", "Maintain Performance"
-                        else: 
+                        else:
                             status, action = "IMPROVEMENT NEEDED", "Closer Monitoring Required"
 
                         st.session_state.data_store["C"].append({
                             "Class": r['Class'], "Subject": teacher['Expertise'], "Teacher": teacher['Name'],
-                            "Teacher Success": ts, "Student Score": ps, 
+                            "Teacher Success": ts, "Student Score": ps,
                             "Efficiency Index": round(combined, 2), "Status": status, "Action Plan": action
                         })
                 else:
                     st.session_state.data_store["C"].append({
                         "Class": teacher['Assigned Class'], "Subject": teacher['Expertise'], "Teacher": teacher['Name'],
-                        "Teacher Success": teacher['Success'], "Student Score": 0, 
+                        "Teacher Success": teacher['Success'], "Student Score": 0,
                         "Efficiency Index": 0, "Status": "NO DATA", "Action Plan": "Assess Class"
                     })
             st.success("Mapping Completed!")
@@ -266,4 +266,3 @@ else:
                 st.download_button(f"📥 Download {sel_t}'s Report", create_pdf(t_data, f"Report: {sel_t}"), f"{sel_t}.pdf")
             else:
                 st.info("Run Auto-Map first.")
-

@@ -44,7 +44,7 @@ class SchoolPDF(FPDF):
         ts = datetime.now().strftime('%Y-%m-%d %H:%M')
         self.cell(0, 10, f"Date: {ts} | Page {self.page_no()}", 0, 0, 'L')
 
-def create_pdf(data, title):
+def create_pdf(data, title, is_summary=False):
     pdf = SchoolPDF()
     pdf.add_page()
     df = pd.DataFrame(data)
@@ -53,20 +53,21 @@ def create_pdf(data, title):
     pdf.ln(5)
     
     if not df.empty:
-        col_widths = {"Class": 18, "Subject": 18, "Teacher": 22, "Teacher Success": 22, "Student Score": 20, "Efficiency Index": 20, "Status": 35, "Action Plan": 40}
+        # Custom widths to include Predictive Score as requested
+        col_widths = {"Class": 18, "Subject": 18, "Teacher": 22, "Student Score": 20, "Efficiency Index": 20, "Status": 35, "Action Plan": 40}
         pdf.set_font('Arial', 'B', 7)
         pdf.set_fill_color(230, 230, 230)
-        for col in df.columns:
-            w = col_widths.get(col, 20)
-            pdf.cell(w, 10, str(col), 1, 0, 'C', fill=True)
+        
+        display_cols = [c for c in df.columns if c in col_widths]
+        for col in display_cols:
+            pdf.cell(col_widths[col], 10, str(col), 1, 0, 'C', fill=True)
         pdf.ln()
         
         for _, row in df.iterrows():
             pdf.set_font('Arial', '', 6)
-            for col in df.columns:
-                w = col_widths.get(col, 20)
+            for col in display_cols:
                 text = str(row[col])
-                pdf.cell(w, 8, text, 1, 0, 'C')
+                pdf.cell(col_widths[col], 8, text, 1, 0, 'C')
             pdf.ln()
             
     return pdf.output(dest='S').encode('latin-1')
@@ -92,7 +93,7 @@ def handle_bulk_upload():
                         st.session_state.data_store["A"].append({
                             "Class": str(row['Class']), "Subject": str(row['Subject']),
                             "A": int(row['A']), "B": int(row['B']), "C": int(row['C']), "D": int(row['D']),
-                            "Predictive Score": p_score
+                            "Student Score": p_score # Labeling as Student Score for consistency
                         })
                 elif upload_type == "Teachers":
                     for _, row in df.iterrows():
@@ -170,7 +171,7 @@ else:
                 if relevant:
                     for r in relevant:
                         ts = teacher['Success']
-                        ps = r['Predictive Score']
+                        ps = r['Student Score']
                         combined = (ps * 0.6) + (ts * 0.4)
                         
                         if combined >= 85: status, action = "GOLD STANDARD", "Promote as Mentor"
@@ -199,8 +200,6 @@ else:
         st.header("📈 Institutional Optimization Analytics")
         if st.session_state.data_store["C"]:
             df_chart = pd.DataFrame(st.session_state.data_store["C"])
-            
-            # Create a label combining Name and Class to solve the "Azzan in two places" issue
             df_chart['Display_Label'] = df_chart['Teacher'] + " (" + df_chart['Class'] + ")"
             
             green_list = df_chart[df_chart['Efficiency Index'] >= 85]['Display_Label'].unique().tolist()
@@ -220,6 +219,15 @@ else:
             avg_eff = df_chart['Efficiency Index'].mean()
             col_stat1.metric("Institutional Efficiency Avg", f"{round(avg_eff, 2)}%")
             col_stat2.metric("Critical Action Items", len(red_list))
+            
+            # --- NEW DASHBOARD PDF DOWNLOAD ---
+            st.subheader("📋 Administrative Export")
+            st.download_button(
+                label="📥 Download Full Dashboard Summary (PDF)",
+                data=create_pdf(st.session_state.data_store["C"], "Institutional Analytics Summary"),
+                file_name=f"Academy_Summary_{datetime.now().strftime('%Y%m%d')}.pdf",
+                mime="application/pdf"
+            )
         else:
             st.warning("Please run 'Auto-Map Teachers' in Efficiency Mapping first.")
 

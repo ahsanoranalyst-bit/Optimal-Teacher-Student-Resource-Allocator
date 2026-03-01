@@ -9,7 +9,7 @@ from fpdf import FPDF
 from datetime import datetime
 
 # --- 1. CORE INITIALIZATION ---
-ACTIVATION_KEY = "PAK-2026"
+ACTIVATION_KEY = "Ahsan123"
 
 if 'authenticated' not in st.session_state: st.session_state.authenticated = False
 if 'setup_complete' not in st.session_state: st.session_state.setup_complete = False
@@ -271,5 +271,6 @@ else:
                 st.download_button(f"📥 Download {sel_t}'s Report", create_pdf(t_data, f"Report: {sel_t}"), f"{sel_t}.pdf")
             else:
                 st.info("Run Auto-Map first.")
+
 
 

@@ -1,8 +1,3 @@
-
-
-
-
-
 import streamlit as st
 import pandas as pd
 from fpdf import FPDF
@@ -56,35 +51,31 @@ def create_pdf(data, title):
     pdf.set_font('Arial', 'B', 12)
     pdf.cell(0, 10, f"REPORT: {title.upper()}", 0, 1, 'L')
     pdf.ln(5)
-   
+    
     if not df.empty:
-        # Custom widths to prevent overlap
         col_widths = {
             "Class": 18, "Subject": 18, "Teacher": 22,
             "Teacher Success": 22, "Student Score": 20,
             "Efficiency Index": 20, "Status": 35, "Action Plan": 40
         }
-       
-        # Table Header
+        
         pdf.set_font('Arial', 'B', 7)
         pdf.set_fill_color(230, 230, 230)
         for col in df.columns:
             w = col_widths.get(col, 20)
             pdf.cell(w, 10, str(col), 1, 0, 'C', fill=True)
         pdf.ln()
-       
-        # Table Rows
+        
         for _, row in df.iterrows():
             pdf.set_font('Arial', '', 6)
             for col in df.columns:
                 w = col_widths.get(col, 20)
                 text = str(row[col])
-                # Shrink font further if text is very long
                 if len(text) > 25: pdf.set_font('Arial', '', 5)
                 else: pdf.set_font('Arial', '', 6)
                 pdf.cell(w, 8, text, 1, 0, 'C')
             pdf.ln()
-           
+            
     return pdf.output(dest='S').encode('latin-1')
 
 # --- 3. BULK UPLOAD LOGIC ---
@@ -134,27 +125,27 @@ elif not st.session_state.setup_complete:
     handle_bulk_upload()
     st.title("⚙️ Institution Setup")
     st.session_state.data_store["School_Name"] = st.text_input("School Name", "Global International Academy")
-   
+    
     st.subheader("Manual Class Configuration")
     c1, c2 = st.columns(2)
     g_name = c1.selectbox("Grade", [f"Grade {i}" for i in range(1, 13)])
     s_name = c2.text_input("Section")
     sub_input = st.text_area("Subjects (comma separated)", "Math, English, Science")
-   
+    
     if st.button("Save Class"):
         if s_name:
             full_key = f"{g_name}-{s_name}"
             subjects = [s.strip() for s in sub_input.split(",") if s.strip()]
             st.session_state.data_store["Grades_Config"][full_key] = subjects
             st.success(f"Added {full_key}")
-   
+    
     if st.session_state.data_store["Grades_Config"]:
         if st.button("🚀 Enter Dashboard"):
             st.session_state.setup_complete = True
             st.rerun()
 else:
     st.sidebar.title("🎮 Dashboard Menu")
-    nav = st.sidebar.radio("Go To:", ["Student Performance (A)", "Teacher Experts (B)", "Efficiency Mapping (C)", "Teacher Portal"])
+    nav = st.sidebar.radio("Go To:", ["Student Performance (A)", "Teacher Experts (B)", "Efficiency Mapping (C)", "Analytics Dashboard", "Teacher Portal"])
     handle_bulk_upload()
 
     if st.sidebar.button("🔓 Logout"):
@@ -218,13 +209,13 @@ else:
                 relevant = [a for a in st.session_state.data_store["A"]
                            if a['Subject'].lower() == teacher['Expertise'].lower()
                            and a['Class'] == teacher['Assigned Class']]
-               
+                
                 if relevant:
                     for r in relevant:
                         ts = teacher['Success']
                         ps = r['Predictive Score']
                         combined = (ps * 0.6) + (ts * 0.4)
-                       
+                        
                         if combined >= 85:
                             status, action = "GOLD STANDARD", "Promote as Mentor"
                         elif ps < 50 and ts < 50:
@@ -253,12 +244,44 @@ else:
 
         if st.session_state.data_store["C"]:
             df_c = pd.DataFrame(st.session_state.data_store["C"])
-            st.dataframe(df_c, use_container_width=True) # Wide screen view
+            st.dataframe(df_c, use_container_width=True)
             best = df_c[df_c["Status"].isin(["BEST TEACHER", "GOLD STANDARD"])]
             improve = df_c[~df_c["Status"].isin(["BEST TEACHER", "GOLD STANDARD"])]
             c1, c2 = st.columns(2)
             c1.download_button("📥 Best PDF", create_pdf(best, "Excellence"), "Excellence.pdf")
             c2.download_button("📥 Action PDF", create_pdf(improve, "Action Required"), "Actions.pdf")
+
+    elif nav == "Analytics Dashboard":
+        st.header("📈 Institutional Optimization Analytics")
+        if st.session_state.data_store["C"]:
+            df_chart = pd.DataFrame(st.session_state.data_store["C"])
+            
+            # Optimization logic for Visuals
+            st.subheader("Teacher Efficiency Comparison")
+            # Color coding logic for bars
+            def get_color(val):
+                if val >= 85: return '#2ecc71' # Green
+                if val < 50: return '#e74c3c' # Red
+                return '#f39c12' # Orange
+
+            df_chart['Color'] = df_chart['Efficiency Index'].apply(get_color)
+            
+            # Simple Streamlit bar chart for Priority
+            st.bar_chart(df_chart.set_index('Teacher')['Efficiency Index'])
+            
+            st.markdown("""
+            **Optimization Guide:**
+            * 🟢 **Green (85+):** High Priority for critical classes.
+            * 🟠 **Orange (50-84):** Good, but needs monitoring.
+            * 🔴 **Red (<50):** Urgent Training or Replacement required.
+            """)
+            
+            col_stat1, col_stat2 = st.columns(2)
+            avg_eff = df_chart['Efficiency Index'].mean()
+            col_stat1.metric("Average Institutional Efficiency", f"{round(avg_eff, 2)}%")
+            col_stat2.metric("Critical Action Needed", len(df_chart[df_chart['Efficiency Index'] < 50]))
+        else:
+            st.warning("Please run 'Auto-Map Teachers' in Efficiency Mapping first.")
 
     elif nav == "Teacher Portal":
         st.header("📜 Individual Teacher Portal")
@@ -271,6 +294,3 @@ else:
                 st.download_button(f"📥 Download {sel_t}'s Report", create_pdf(t_data, f"Report: {sel_t}"), f"{sel_t}.pdf")
             else:
                 st.info("Run Auto-Map first.")
-
-
-

@@ -1,6 +1,3 @@
-
-
-
 import streamlit as st
 import pandas as pd
 from fpdf import FPDF
@@ -192,7 +189,6 @@ else:
             df_c = pd.DataFrame(st.session_state.data_store["C"])
             st.dataframe(df_c, use_container_width=True)
             
-            # PDF Download logic restored
             best = df_c[df_c["Status"].isin(["BEST TEACHER", "GOLD STANDARD"])]
             improve = df_c[~df_c["Status"].isin(["BEST TEACHER", "GOLD STANDARD"])]
             c1, c2 = st.columns(2)
@@ -204,24 +200,26 @@ else:
         if st.session_state.data_store["C"]:
             df_chart = pd.DataFrame(st.session_state.data_store["C"])
             
-            # Logical grouping for names
-            green_names = df_chart[df_chart['Efficiency Index'] >= 85]['Teacher'].unique().tolist()
-            orange_names = df_chart[(df_chart['Efficiency Index'] >= 50) & (df_chart['Efficiency Index'] < 85)]['Teacher'].unique().tolist()
-            red_names = df_chart[df_chart['Efficiency Index'] < 50]['Teacher'].unique().tolist()
+            # Create a label combining Name and Class to solve the "Azzan in two places" issue
+            df_chart['Display_Label'] = df_chart['Teacher'] + " (" + df_chart['Class'] + ")"
+            
+            green_list = df_chart[df_chart['Efficiency Index'] >= 85]['Display_Label'].unique().tolist()
+            orange_list = df_chart[(df_chart['Efficiency Index'] >= 50) & (df_chart['Efficiency Index'] < 85)]['Display_Label'].unique().tolist()
+            red_list = df_chart[df_chart['Efficiency Index'] < 50]['Display_Label'].unique().tolist()
 
             st.subheader("Teacher Efficiency Priority")
-            st.bar_chart(df_chart.set_index('Teacher')['Efficiency Index'])
+            st.bar_chart(df_chart.set_index('Display_Label')['Efficiency Index'])
 
             st.markdown("### 🛠️ Optimization Guide & Action List")
-            st.success(f"🟢 **Green (85+):** High Priority for critical classes. \n\n **Teachers:** {', '.join(green_names) if green_names else 'None'}")
-            st.warning(f"🟠 **Orange (50-84):** Good, but needs monitoring. \n\n **Teachers:** {', '.join(orange_names) if orange_names else 'None'}")
-            st.error(f"🔴 **Red (<50):** Urgent Training or Replacement required. \n\n **Teachers:** {', '.join(red_names) if red_names else 'None'}")
+            st.success(f"🟢 **Green (85+):** High Priority for critical classes. \n\n **Teachers:** {', '.join(green_list) if green_list else 'None'}")
+            st.warning(f"🟠 **Orange (50-84):** Good, but needs monitoring. \n\n **Teachers:** {', '.join(orange_list) if orange_list else 'None'}")
+            st.error(f"🔴 **Red (<50):** Urgent Training or Replacement required. \n\n **Teachers:** {', '.join(red_list) if red_list else 'None'}")
             
             st.divider()
             col_stat1, col_stat2 = st.columns(2)
             avg_eff = df_chart['Efficiency Index'].mean()
             col_stat1.metric("Institutional Efficiency Avg", f"{round(avg_eff, 2)}%")
-            col_stat2.metric("Critical Action Items", len(red_names))
+            col_stat2.metric("Critical Action Items", len(red_list))
         else:
             st.warning("Please run 'Auto-Map Teachers' in Efficiency Mapping first.")
 
@@ -233,9 +231,6 @@ else:
             t_data = [x for x in st.session_state.data_store["C"] if x['Teacher'] == sel_t]
             if t_data:
                 st.dataframe(pd.DataFrame(t_data), use_container_width=True)
-                # PDF Download logic restored for individual portal
                 st.download_button(f"📥 Download {sel_t}'s Performance Report", create_pdf(t_data, f"Report: {sel_t}"), f"{sel_t}_Report.pdf")
             else:
-                st.info("No mapping data found for this teacher. Run Auto-Map first.")
-
-
+                st.info("No mapping data found for this teacher.")

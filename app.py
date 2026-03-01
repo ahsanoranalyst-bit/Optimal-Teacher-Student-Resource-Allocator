@@ -1,7 +1,5 @@
 
-AHSAN KHAN <ahsan.or.analyst@gmail.com>
-1:09 PM (0 minutes ago)
-to me
+
 
 import streamlit as st
 import pandas as pd
@@ -239,4 +237,5 @@ else:
                 st.download_button(f"📥 Download {sel_t}'s Performance Report", create_pdf(t_data, f"Report: {sel_t}"), f"{sel_t}_Report.pdf")
             else:
                 st.info("No mapping data found for this teacher. Run Auto-Map first.")
+
 

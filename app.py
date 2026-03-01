@@ -4,7 +4,7 @@ from fpdf import FPDF
 from datetime import datetime
 
 # --- 1. CORE INITIALIZATION ---
-ACTIVATION_KEY = "Ahsan123"
+ACTIVATION_KEY = "PAK-2026"
 
 if 'authenticated' not in st.session_state: st.session_state.authenticated = False
 if 'setup_complete' not in st.session_state: st.session_state.setup_complete = False
@@ -22,7 +22,7 @@ def calculate_predictive_score(a, b, c, d):
     score = ((a * 100) + (b * 75) + (c * 50) + (d * 25)) / total
     return round(score, 2)
 
-# --- 2. PROFESSIONAL PDF ENGINE (FIXED OVERLAP) ---
+# --- 2. PROFESSIONAL PDF ENGINE ---
 class SchoolPDF(FPDF):
     def header(self):
         self.set_fill_color(31, 73, 125)
@@ -53,29 +53,20 @@ def create_pdf(data, title):
     pdf.ln(5)
     
     if not df.empty:
-        col_widths = {
-            "Class": 18, "Subject": 18, "Teacher": 22,
-            "Teacher Success": 22, "Student Score": 20,
-            "Efficiency Index": 20, "Status": 35, "Action Plan": 40
-        }
-        
+        col_widths = {"Class": 18, "Subject": 18, "Teacher": 22, "Teacher Success": 22, "Student Score": 20, "Efficiency Index": 20, "Status": 35, "Action Plan": 40}
         pdf.set_font('Arial', 'B', 7)
         pdf.set_fill_color(230, 230, 230)
         for col in df.columns:
             w = col_widths.get(col, 20)
             pdf.cell(w, 10, str(col), 1, 0, 'C', fill=True)
         pdf.ln()
-        
         for _, row in df.iterrows():
             pdf.set_font('Arial', '', 6)
             for col in df.columns:
                 w = col_widths.get(col, 20)
                 text = str(row[col])
-                if len(text) > 25: pdf.set_font('Arial', '', 5)
-                else: pdf.set_font('Arial', '', 6)
                 pdf.cell(w, 8, text, 1, 0, 'C')
             pdf.ln()
-            
     return pdf.output(dest='S').encode('latin-1')
 
 # --- 3. BULK UPLOAD LOGIC ---
@@ -84,7 +75,6 @@ def handle_bulk_upload():
     st.sidebar.subheader("📂 Excel Data Import")
     upload_type = st.sidebar.selectbox("Category", ["Classes", "Student Performance", "Teachers"], key="upload_sel")
     uploaded_file = st.sidebar.file_uploader(f"Choose {upload_type} Excel File", type=["xlsx"], key="file_up")
-
     if uploaded_file is not None:
         if st.sidebar.button(f"Confirm Import: {upload_type}"):
             try:
@@ -96,17 +86,10 @@ def handle_bulk_upload():
                 elif upload_type == "Student Performance":
                     for _, row in df.iterrows():
                         p_score = calculate_predictive_score(int(row['A']), int(row['B']), int(row['C']), int(row['D']))
-                        st.session_state.data_store["A"].append({
-                            "Class": str(row['Class']), "Subject": str(row['Subject']),
-                            "A": int(row['A']), "B": int(row['B']), "C": int(row['C']), "D": int(row['D']),
-                            "Predictive Score": p_score
-                        })
+                        st.session_state.data_store["A"].append({"Class": str(row['Class']), "Subject": str(row['Subject']), "A": int(row['A']), "B": int(row['B']), "C": int(row['C']), "D": int(row['D']), "Predictive Score": p_score})
                 elif upload_type == "Teachers":
                     for _, row in df.iterrows():
-                        st.session_state.data_store["B"].append({
-                            "Name": row['Name'], "Expertise": row['Expertise'],
-                            "Success": int(row['Success']), "Assigned Class": str(row['Assigned Class'])
-                        })
+                        st.session_state.data_store["B"].append({"Name": row['Name'], "Expertise": row['Expertise'], "Success": int(row['Success']), "Assigned Class": str(row['Assigned Class'])})
                 st.sidebar.success("Import Successful!")
                 st.rerun()
             except Exception as e:
@@ -120,25 +103,18 @@ if not st.session_state.authenticated:
         if pwd == ACTIVATION_KEY:
             st.session_state.authenticated = True
             st.rerun()
-
 elif not st.session_state.setup_complete:
     handle_bulk_upload()
     st.title("⚙️ Institution Setup")
     st.session_state.data_store["School_Name"] = st.text_input("School Name", "Global International Academy")
-    
-    st.subheader("Manual Class Configuration")
     c1, c2 = st.columns(2)
     g_name = c1.selectbox("Grade", [f"Grade {i}" for i in range(1, 13)])
     s_name = c2.text_input("Section")
     sub_input = st.text_area("Subjects (comma separated)", "Math, English, Science")
-    
     if st.button("Save Class"):
         if s_name:
-            full_key = f"{g_name}-{s_name}"
-            subjects = [s.strip() for s in sub_input.split(",") if s.strip()]
-            st.session_state.data_store["Grades_Config"][full_key] = subjects
-            st.success(f"Added {full_key}")
-    
+            st.session_state.data_store["Grades_Config"][f"{g_name}-{s_name}"] = [s.strip() for s in sub_input.split(",") if s.strip()]
+            st.success("Added Class")
     if st.session_state.data_store["Grades_Config"]:
         if st.button("🚀 Enter Dashboard"):
             st.session_state.setup_complete = True
@@ -158,128 +134,58 @@ else:
     if nav == "Student Performance (A)":
         st.header("📊 Student Performance Records")
         class_list = list(st.session_state.data_store["Grades_Config"].keys())
-        with st.expander("➕ Add Manual Entry"):
-            if class_list:
-                sel_class = st.selectbox("Select Class", class_list)
-                sel_sub = st.selectbox("Select Subject", st.session_state.data_store["Grades_Config"][sel_class])
-                with st.form("manual_a_form"):
-                    c1,c2,c3,c4 = st.columns(4)
-                    ga, gb, gc, gd = c1.number_input("A", 0), c2.number_input("B", 0), c3.number_input("C", 0), c4.number_input("D", 0)
-                    if st.form_submit_button("Save Record"):
-                        score = calculate_predictive_score(ga, gb, gc, gd)
-                        st.session_state.data_store["A"].append({
-                            "Class": sel_class, "Subject": sel_sub,
-                            "A": ga, "B": gb, "C": gc, "D": gd, "Predictive Score": score
-                        })
-                        st.rerun()
-
         if st.session_state.data_store["A"]:
-            df_a = pd.DataFrame(st.session_state.data_store["A"])
-            st.dataframe(df_a)
-            idx = st.selectbox("Select Record ID to Delete", df_a.index)
-            if st.button("🗑️ Delete Record"):
-                st.session_state.data_store["A"].pop(idx)
-                st.rerun()
+            st.dataframe(pd.DataFrame(st.session_state.data_store["A"]))
 
     elif nav == "Teacher Experts (B)":
         st.header("👨‍🏫 Teacher Registry")
-        class_list = list(st.session_state.data_store["Grades_Config"].keys())
-        with st.form("manual_t_form"):
-            t_name = st.text_input("Name")
-            t_exp = st.text_input("Expertise")
-            t_class = st.selectbox("Assigned Class", class_list) if class_list else st.text_input("Assigned Class")
-            t_success = st.number_input("Success Rate", 0, 100)
-            if st.form_submit_button("Register"):
-                st.session_state.data_store["B"].append({"Name": t_name, "Expertise": t_exp, "Success": t_success, "Assigned Class": t_class})
-                st.rerun()
-
         if st.session_state.data_store["B"]:
-            df_b = pd.DataFrame(st.session_state.data_store["B"])
-            st.dataframe(df_b)
-            idx_b = st.selectbox("Select Teacher ID to Delete", df_b.index)
-            if st.button("🗑️ Remove Teacher"):
-                st.session_state.data_store["B"].pop(idx_b)
-                st.rerun()
+            st.dataframe(pd.DataFrame(st.session_state.data_store["B"]))
 
     elif nav == "Efficiency Mapping (C)":
         st.header("🎯 Efficiency Mapping")
         if st.button("🔄 Auto-Map Teachers"):
             st.session_state.data_store["C"] = []
             for teacher in st.session_state.data_store["B"]:
-                relevant = [a for a in st.session_state.data_store["A"]
-                           if a['Subject'].lower() == teacher['Expertise'].lower()
-                           and a['Class'] == teacher['Assigned Class']]
-                
+                relevant = [a for a in st.session_state.data_store["A"] if a['Subject'].lower() == teacher['Expertise'].lower() and a['Class'] == teacher['Assigned Class']]
                 if relevant:
                     for r in relevant:
-                        ts = teacher['Success']
-                        ps = r['Predictive Score']
+                        ts, ps = teacher['Success'], r['Predictive Score']
                         combined = (ps * 0.6) + (ts * 0.4)
-                        
-                        if combined >= 85:
-                            status, action = "GOLD STANDARD", "Promote as Mentor"
-                        elif ps < 50 and ts < 50:
-                            status, action = "CRITICAL: DOUBLE ACTION", "Teacher Training & Remedial Classes"
-                        elif ps < 50 and ts >= 70:
-                            status, action = "CLASS AT RISK", "Focus on Student Basics"
-                        elif ps >= 70 and ts < 50:
-                            status, action = "SKILL GAP", "Teacher Subject Training Required"
-                        elif combined >= 70:
-                            status, action = "BEST TEACHER", "Maintain Performance"
-                        else:
-                            status, action = "IMPROVEMENT NEEDED", "Closer Monitoring Required"
-
-                        st.session_state.data_store["C"].append({
-                            "Class": r['Class'], "Subject": teacher['Expertise'], "Teacher": teacher['Name'],
-                            "Teacher Success": ts, "Student Score": ps,
-                            "Efficiency Index": round(combined, 2), "Status": status, "Action Plan": action
-                        })
-                else:
-                    st.session_state.data_store["C"].append({
-                        "Class": teacher['Assigned Class'], "Subject": teacher['Expertise'], "Teacher": teacher['Name'],
-                        "Teacher Success": teacher['Success'], "Student Score": 0,
-                        "Efficiency Index": 0, "Status": "NO DATA", "Action Plan": "Assess Class"
-                    })
+                        if combined >= 85: status, action = "GOLD STANDARD", "Promote as Mentor"
+                        elif ps < 50 and ts < 50: status, action = "CRITICAL: DOUBLE ACTION", "Teacher Training & Remedial Classes"
+                        elif combined >= 70: status, action = "BEST TEACHER", "Maintain Performance"
+                        else: status, action = "IMPROVEMENT NEEDED", "Closer Monitoring Required"
+                        st.session_state.data_store["C"].append({"Class": r['Class'], "Subject": teacher['Expertise'], "Teacher": teacher['Name'], "Teacher Success": ts, "Student Score": ps, "Efficiency Index": round(combined, 2), "Status": status, "Action Plan": action})
             st.success("Mapping Completed!")
-
         if st.session_state.data_store["C"]:
-            df_c = pd.DataFrame(st.session_state.data_store["C"])
-            st.dataframe(df_c, use_container_width=True)
-            best = df_c[df_c["Status"].isin(["BEST TEACHER", "GOLD STANDARD"])]
-            improve = df_c[~df_c["Status"].isin(["BEST TEACHER", "GOLD STANDARD"])]
-            c1, c2 = st.columns(2)
-            c1.download_button("📥 Best PDF", create_pdf(best, "Excellence"), "Excellence.pdf")
-            c2.download_button("📥 Action PDF", create_pdf(improve, "Action Required"), "Actions.pdf")
+            st.dataframe(pd.DataFrame(st.session_state.data_store["C"]), use_container_width=True)
 
     elif nav == "Analytics Dashboard":
         st.header("📈 Institutional Optimization Analytics")
         if st.session_state.data_store["C"]:
             df_chart = pd.DataFrame(st.session_state.data_store["C"])
             
-            # Optimization logic for Visuals
-            st.subheader("Teacher Efficiency Comparison")
-            # Color coding logic for bars
-            def get_color(val):
-                if val >= 85: return '#2ecc71' # Green
-                if val < 50: return '#e74c3c' # Red
-                return '#f39c12' # Orange
+            # Identify Names for each category
+            green_names = df_chart[df_chart['Efficiency Index'] >= 85]['Teacher'].unique().tolist()
+            orange_names = df_chart[(df_chart['Efficiency Index'] >= 50) & (df_chart['Efficiency Index'] < 85)]['Teacher'].unique().tolist()
+            red_names = df_chart[df_chart['Efficiency Index'] < 50]['Teacher'].unique().tolist()
 
-            df_chart['Color'] = df_chart['Efficiency Index'].apply(get_color)
-            
-            # Simple Streamlit bar chart for Priority
+            st.subheader("Teacher Efficiency Priority")
             st.bar_chart(df_chart.set_index('Teacher')['Efficiency Index'])
+
+            st.markdown("### 🛠️ Optimization Guide & Action List")
             
-            st.markdown("""
-            **Optimization Guide:**
-            * 🟢 **Green (85+):** High Priority for critical classes.
-            * 🟠 **Orange (50-84):** Good, but needs monitoring.
-            * 🔴 **Red (<50):** Urgent Training or Replacement required.
-            """)
+            # Displaying Names with Colors
+            st.success(f"🟢 **Green (85+):** High Priority for critical classes. \n\n **Teachers:** {', '.join(green_names) if green_names else 'None'}")
+            st.warning(f"🟠 **Orange (50-84):** Good, but needs monitoring. \n\n **Teachers:** {', '.join(orange_names) if orange_names else 'None'}")
+            st.error(f"🔴 **Red (<50):** Urgent Training or Replacement required. \n\n **Teachers:** {', '.join(red_names) if red_names else 'None'}")
             
+            st.divider()
             col_stat1, col_stat2 = st.columns(2)
             avg_eff = df_chart['Efficiency Index'].mean()
             col_stat1.metric("Average Institutional Efficiency", f"{round(avg_eff, 2)}%")
-            col_stat2.metric("Critical Action Needed", len(df_chart[df_chart['Efficiency Index'] < 50]))
+            col_stat2.metric("Critical Action Needed", len(red_names))
         else:
             st.warning("Please run 'Auto-Map Teachers' in Efficiency Mapping first.")
 
@@ -291,6 +197,3 @@ else:
             t_data = [x for x in st.session_state.data_store["C"] if x['Teacher'] == sel_t]
             if t_data:
                 st.dataframe(pd.DataFrame(t_data), use_container_width=True)
-                st.download_button(f"📥 Download {sel_t}'s Report", create_pdf(t_data, f"Report: {sel_t}"), f"{sel_t}.pdf")
-            else:
-                st.info("Run Auto-Map first.")

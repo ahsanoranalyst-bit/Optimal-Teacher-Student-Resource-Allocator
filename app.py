@@ -1,9 +1,7 @@
 
 
 
-AHSAN KHAN <ahsan.or.analyst@gmail.com>
-Sun, Feb 22, 1:45 PM (7 days ago)
-to me, ahk06364
+
 
 import streamlit as st
 import pandas as pd
@@ -273,4 +271,5 @@ else:
                 st.download_button(f"📥 Download {sel_t}'s Report", create_pdf(t_data, f"Report: {sel_t}"), f"{sel_t}.pdf")
             else:
                 st.info("Run Auto-Map first.")
+
 

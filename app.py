@@ -22,7 +22,7 @@ def calculate_predictive_score(a, b, c, d):
     score = ((a * 100) + (b * 75) + (c * 50) + (d * 25)) / total
     return round(score, 2)
 
-# --- 2. PROFESSIONAL PDF ENGINE ---
+# --- 2. ADVANCED PDF ENGINE ---
 class SchoolPDF(FPDF):
     def header(self):
         self.set_fill_color(31, 73, 125)
@@ -44,29 +44,32 @@ class SchoolPDF(FPDF):
         ts = datetime.now().strftime('%Y-%m-%d %H:%M')
         self.cell(0, 10, f"Date: {ts} | Page {self.page_no()}", 0, 0, 'L')
 
-def create_pdf(data, title):
+def create_custom_pdf(data, title, header_color=(0,0,0)):
     pdf = SchoolPDF()
     pdf.add_page()
     df = pd.DataFrame(data)
+    
     pdf.set_font('Arial', 'B', 12)
-    pdf.cell(0, 10, f"REPORT: {title.upper()}", 0, 1, 'L')
+    pdf.set_text_color(header_color[0], header_color[1], header_color[2])
+    pdf.cell(0, 10, title.upper(), 0, 1, 'L')
+    pdf.set_text_color(0, 0, 0)
     pdf.ln(5)
     
     if not df.empty:
-        col_widths = {"Class": 18, "Subject": 18, "Teacher": 22, "Teacher Success": 22, "Student Score": 20, "Efficiency Index": 20, "Status": 35, "Action Plan": 40}
-        pdf.set_font('Arial', 'B', 7)
-        pdf.set_fill_color(230, 230, 230)
-        for col in df.columns:
-            w = col_widths.get(col, 20)
-            pdf.cell(w, 10, str(col), 1, 0, 'C', fill=True)
+        col_widths = {"Class": 20, "Teacher": 35, "Subject": 25, "Efficiency Index": 30, "Status": 35, "Action Plan": 45}
+        pdf.set_font('Arial', 'B', 8)
+        pdf.set_fill_color(235, 235, 235)
+        
+        display_cols = [c for c in ["Class", "Teacher", "Subject", "Efficiency Index", "Status", "Action Plan"] if c in df.columns]
+        for col in display_cols:
+            pdf.cell(col_widths.get(col, 20), 10, col, 1, 0, 'C', fill=True)
         pdf.ln()
         
+        pdf.set_font('Arial', '', 7)
         for _, row in df.iterrows():
-            pdf.set_font('Arial', '', 6)
-            for col in df.columns:
-                w = col_widths.get(col, 20)
-                text = str(row[col])
-                pdf.cell(w, 8, text, 1, 0, 'C')
+            for col in display_cols:
+                val = f"{row[col]}%" if col == "Efficiency Index" else str(row[col])
+                pdf.cell(col_widths.get(col, 20), 8, val, 1, 0, 'C')
             pdf.ln()
             
     return pdf.output(dest='S').encode('latin-1')
@@ -92,7 +95,7 @@ def handle_bulk_upload():
                         st.session_state.data_store["A"].append({
                             "Class": str(row['Class']), "Subject": str(row['Subject']),
                             "A": int(row['A']), "B": int(row['B']), "C": int(row['C']), "D": int(row['D']),
-                            "Predictive Score": p_score
+                            "Student Score": p_score 
                         })
                 elif upload_type == "Teachers":
                     for _, row in df.iterrows():
@@ -170,7 +173,7 @@ else:
                 if relevant:
                     for r in relevant:
                         ts = teacher['Success']
-                        ps = r['Predictive Score']
+                        ps = r['Student Score']
                         combined = (ps * 0.6) + (ts * 0.4)
                         
                         if combined >= 85: status, action = "GOLD STANDARD", "Promote as Mentor"
@@ -189,48 +192,61 @@ else:
             df_c = pd.DataFrame(st.session_state.data_store["C"])
             st.dataframe(df_c, use_container_width=True)
             
-            # PDF Download logic restored
+            # --- RESTORED SEPARATE PDF BUTTONS ---
             best = df_c[df_c["Status"].isin(["BEST TEACHER", "GOLD STANDARD"])]
             improve = df_c[~df_c["Status"].isin(["BEST TEACHER", "GOLD STANDARD"])]
+            
             c1, c2 = st.columns(2)
-            c1.download_button("📥 Download Excellence Report (PDF)", create_pdf(best, "Excellence"), "Excellence.pdf")
-            c2.download_button("📥 Download Action Plan (PDF)", create_pdf(improve, "Action Required"), "Actions.pdf")
+            with c1:
+                st.download_button("📥 Download Excellence Report (PDF)", 
+                                   create_custom_pdf(best, "Teacher Excellence Report", (34, 139, 34)), 
+                                   "Excellence_Report.pdf")
+            with c2:
+                st.download_button("📥 Download Action Plan (PDF)", 
+                                   create_custom_pdf(improve, "Teacher Improvement Action Plan", (220, 20, 60)), 
+                                   "Action_Plan.pdf")
 
     elif nav == "Analytics Dashboard":
         st.header("📈 Institutional Optimization Analytics")
         if st.session_state.data_store["C"]:
             df_chart = pd.DataFrame(st.session_state.data_store["C"])
+            df_chart['Display_Label'] = df_chart['Teacher'] + " (" + df_chart['Class'] + ")"
             
-            # Logical grouping for names
-            green_names = df_chart[df_chart['Efficiency Index'] >= 85]['Teacher'].unique().tolist()
-            orange_names = df_chart[(df_chart['Efficiency Index'] >= 50) & (df_chart['Efficiency Index'] < 85)]['Teacher'].unique().tolist()
-            red_names = df_chart[df_chart['Efficiency Index'] < 50]['Teacher'].unique().tolist()
+            green_list = df_chart[df_chart['Efficiency Index'] >= 85]['Display_Label'].unique().tolist()
+            orange_list = df_chart[(df_chart['Efficiency Index'] >= 50) & (df_chart['Efficiency Index'] < 85)]['Display_Label'].unique().tolist()
+            red_list = df_chart[df_chart['Efficiency Index'] < 50]['Display_Label'].unique().tolist()
 
             st.subheader("Teacher Efficiency Priority")
-            st.bar_chart(df_chart.set_index('Teacher')['Efficiency Index'])
+            st.bar_chart(df_chart.set_index('Display_Label')['Efficiency Index'])
 
             st.markdown("### 🛠️ Optimization Guide & Action List")
-            st.success(f"🟢 **Green (85+):** High Priority for critical classes. \n\n **Teachers:** {', '.join(green_names) if green_names else 'None'}")
-            st.warning(f"🟠 **Orange (50-84):** Good, but needs monitoring. \n\n **Teachers:** {', '.join(orange_names) if orange_names else 'None'}")
-            st.error(f"🔴 **Red (<50):** Urgent Training or Replacement required. \n\n **Teachers:** {', '.join(red_names) if red_names else 'None'}")
+            st.success(f"🟢 **Green (85+):** {', '.join(green_list) if green_list else 'None'}")
+            st.warning(f"🟠 **Orange (50-84):** {', '.join(orange_list) if orange_list else 'None'}")
+            st.error(f"🔴 **Red (<50):** {', '.join(red_list) if red_list else 'None'}")
             
             st.divider()
-            col_stat1, col_stat2 = st.columns(2)
             avg_eff = df_chart['Efficiency Index'].mean()
-            col_stat1.metric("Institutional Efficiency Avg", f"{round(avg_eff, 2)}%")
-            col_stat2.metric("Critical Action Items", len(red_names))
+            st.metric("Institutional Efficiency Avg", f"{round(avg_eff, 2)}%")
+            
+            st.subheader("📋 Administrative Summary Export")
+            st.download_button(
+                label="📥 Download Full Analytics Summary (PDF)",
+                data=create_custom_pdf(st.session_state.data_store["C"], "Institutional Performance Summary"),
+                file_name=f"Full_Academy_Summary_{datetime.now().strftime('%Y%m%d')}.pdf"
+            )
         else:
             st.warning("Please run 'Auto-Map Teachers' in Efficiency Mapping first.")
 
     elif nav == "Teacher Portal":
         st.header("📜 Individual Teacher Portal")
         if st.session_state.data_store["B"]:
-            t_names = list(set([t['Name'] for t in st.session_state.data_store["B"]]))
+            t_names = sorted(list(set([t['Name'] for t in st.session_state.data_store["B"]])))
             sel_t = st.selectbox("Select Teacher", t_names)
             t_data = [x for x in st.session_state.data_store["C"] if x['Teacher'] == sel_t]
             if t_data:
                 st.dataframe(pd.DataFrame(t_data), use_container_width=True)
-                # PDF Download logic restored for individual portal
-                st.download_button(f"📥 Download {sel_t}'s Performance Report", create_pdf(t_data, f"Report: {sel_t}"), f"{sel_t}_Report.pdf")
+                st.download_button(f"📥 Download {sel_t}'s Performance Report", 
+                                   create_custom_pdf(t_data, f"Report: {sel_t}"), 
+                                   f"{sel_t}_Report.pdf")
             else:
-                st.info("No mapping data found for this teacher. Run Auto-Map first.")
+                st.info("No mapping data found for this teacher.")

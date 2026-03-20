@@ -1,10 +1,10 @@
-
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from PIL import Image
+from PIL import Image, ImageOps
 import numpy as np
 import time
+import os
 
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(
@@ -14,8 +14,8 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- 2. ADVANCED UI STYLING (CSS - Cyan & Gold Theme) ---
-# This CSS attempts to match the dark, glowing institutional aesthetic of the image.
+# --- 2. ADVANCED UI STYLING (CSS - Fixed for visibility) ---
+# This CSS attempts to match the dark, glowing institutional aesthetic and fix label visibility.
 st.markdown(f"""
     <style>
     /* Main App Background */
@@ -27,8 +27,8 @@ st.markdown(f"""
     
     /* Center the main content */
     .block-container {{
-        padding-top: 2rem;
-        padding-bottom: 2rem;
+        padding-top: 1rem;
+        padding-bottom: 1rem;
         max-width: 95%;
     }}
 
@@ -43,7 +43,7 @@ st.markdown(f"""
         border: 2px solid #64ffda;
         border-radius: 15px;
         padding: 20px;
-        margin-bottom: 20px;
+        margin-bottom: 15px;
         box-shadow: 0 0 15px rgba(100, 255, 218, 0.3);
     }}
     .gold-accent-panel {{
@@ -70,8 +70,8 @@ st.markdown(f"""
         background: rgba(100, 255, 218, 0.05);
         border: 1px solid rgba(100, 255, 218, 0.2);
         border-radius: 8px;
-        padding: 12px;
-        margin-bottom: 10px;
+        padding: 10px;
+        margin-bottom: 8px;
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -83,29 +83,29 @@ st.markdown(f"""
         transform: translateX(5px);
     }}
 
-    .schedule-time {{ color: #64ffda; font-weight: bold; margin-right: 10px; }}
-    .schedule-locs {{ color: white; }}
-    .country-flag-label {{ display: flex; align-items: center; color: white; font-weight: bold; }}
+    .schedule-time {{ color: #ffd700; font-weight: bold; margin-right: 10px; font-size: 14px;}}
+    .schedule-locs {{ color: white; font-size: 14px;}}
+    .country-flag-label {{ display: flex; align-items: center; color: white; font-weight: bold; font-size: 14px; }}
 
     /* Real-Time Metrics */
     .metric-box {{
         text-align: center;
-        padding: 15px;
+        padding: 10px;
         border-radius: 8px;
         background: rgba(255, 255, 255, 0.02);
-        margin-bottom: 15px;
+        margin-bottom: 10px;
     }}
-    .metric-value {{ font-size: 24px; font-weight: bold; color: white; }}
-    .metric-label {{ font-size: 12px; color: #64ffda; text-transform: uppercase; }}
+    .metric-value {{ font-size: 20px; font-weight: bold; color: white; }}
+    .metric-label {{ font-size: 11px; color: #64ffda; text-transform: uppercase; }}
 
     /* System Health Bar */
     .health-bar-container {{
         width: 100%;
         background-color: #112240;
         border-radius: 10px;
-        height: 15px;
-        border: 1px solid #64ffda;
-        margin-bottom: 20px;
+        height: 12px;
+        border: 1px solid #ffd700;
+        margin-bottom: 15px;
     }}
     .health-bar {{
         height: 100%;
@@ -114,10 +114,42 @@ st.markdown(f"""
         width: 100%; /* Default Optimal */
     }}
 
-    /* --- PARTICIPATING COUNTRIES MENE --- */
-    .country-participating-container {{
+    /* --- PARTICIPATING COUNTRIES MENU (TEXT FALLBACK) --- */
+    .participating-text-container {{
         text-align: center;
-        margin-bottom: 2rem;
+        background: rgba(17, 34, 64, 0.9);
+        border: 2px solid #64ffda;
+        border-radius: 15px;
+        padding: 10px;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 0 15px rgba(100, 255, 218, 0.3);
+    }}
+    .participating-flags {{
+        display: flex;
+        justify-content: center;
+        gap: 20px;
+        font-size: 30px;
+        margin-top: 10px;
+    }}
+    .participating-label {{ color: #64ffda; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;}}
+
+    /* --- FIXED BUTTON VISIBILITY (WHITE BOX ISSUE) --- */
+    /* Make the button label text visible and styled */
+    .stButton>button {{
+        width: 100% !important;
+        background-color: rgba(100, 255, 218, 0.1) !important;
+        color: #64ffda !important; /* Force text color cyan */
+        border: 1px solid #64ffda !important;
+        border-radius: 8px !important;
+        font-weight: bold !important;
+        height: 35px !important;
+        font-size: 13px !important;
+        letter-spacing: 1px;
+    }}
+    .stButton>button:hover {{
+        background-color: #64ffda !important;
+        color: #020c1b !important;
+        box-shadow: 0 0 15px #64ffda;
     }}
     </style>
 """, unsafe_allow_html=True)
@@ -147,20 +179,20 @@ def generate_schedule_data():
         })
     return data
 
-# --- 4. TOP: PARTICIPATING COUNTRIES MENU (IMAGE BASED) ---
-st.markdown('<div class="country-participating-container">', unsafe_allow_html=True)
-try:
-    # Use the image containing the participating country flags as the header
-    country_banner = Image.open('logo_participating.png')
-    # Resize slightly for banner lco
-    # country_banner = country_banner.resize((1200, 100))
-    st.image(country_banner, use_column_width=False, output_format="PNG")
-except FileNotFoundError:
-    st.error("Error: 'logo_participating.png' not found. Please add the participating countries image banner.")
-st.markdown('</div>', unsafe_allow_html=True)
+# --- 4. TOP: PARTICIPATING COUNTRIES MENU (IMAGE OR TEXT) ---
+# Check if logo exists
+PARTICIPATING_LOGO_PATH = 'logo_participating.png'
+if os.path.exists(PARTICIPATING_LOGO_PATH):
+    st.image(PARTICIPATING_LOGO_PATH, use_column_width=True, output_format="PNG")
+else:
+    # Use text fallback for top menu
+    st.markdown('<div class="participating-text-container">', unsafe_allow_html=True)
+    st.markdown('<div class="participating-label">PARTICIPATING COUNTRIES (GLOBAL HUB)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="participating-flags">🇵🇰 🇨🇳 🇺🇸 🇩🇪 🇬🇧 🇧🇷 🇦🇺</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # --- 5. MAIN CONTENT (GRID LAYOUT) ---
-col_left, col_center, col_right = st.columns([1, 2, 1], gap="large")
+col_left, col_center, col_right = st.columns([1, 2, 1], gap="medium")
 
 # --- LEFT PANEL: GLOBAL NETWORK INTELLIGENCE ---
 with col_left:
@@ -168,22 +200,22 @@ with col_left:
     st.markdown('<div class="panel-header cyan-header">GLOBAL NETWORK INTELLIGENCE</div>', unsafe_allow_html=True)
     
     # 1. Connected Nations List (Interactive-looking list)
-    st.markdown('<h4>CONNECTED NATIONS LIST</h4>', unsafe_allow_html=True)
+    st.markdown('<p style="color:#64ffda; font-weight:bold; letter-spacing:1px; margin-bottom:5px;">CONNECTED NATIONS LIST</p>', unsafe_allow_html=True)
     countries = [
-        ("Pakistan", "🇵🇰"), ("China", "🇨🇳"), ("USA", "🇺🇸"), 
-        ("Germany", "🇩🇪"), ("UK", "🇬🇧"), ("Brazil", "🇧🇷"), 
-        ("Australia", "🇦🇺")
+        ("Pakistan", "🇵🇰", "PK"), ("China", "🇨🇳", "CN"), ("USA", "🇺🇸", "US"), 
+        ("Germany", "🇩🇪", "DE"), ("UK", "🇬🇧", "UK"), ("Brazil", "🇧🇷", "BR"), 
+        ("Australia", "🇦🇺", "AU")
     ]
-    for name, flag in countries:
+    for name, flag, code in countries:
         # Simplified item for display, not fully interactive in Streamlit with CSS like this
         st.markdown(f'''
             <div class="list-item">
-                <span class="country-flag-label">{flag} &nbsp; {name.upper()}</span>
-                <span style="color:#64ffda;">•••</span>
+                <span class="country-flag-label">{flag} &nbsp; <span style="color:#ffd700;">{code}</span> &nbsp; {name.upper()}</span>
+                <span style="color:#64ffda; font-weight:bold;">•••</span>
             </div>
         ''', unsafe_allow_html=True)
     
-    st.markdown('<br><br>', unsafe_allow_html=True) # Spacer
+    st.markdown('<br>', unsafe_allow_html=True) # Spacer
 
     # 2. Performance Counters
     st.markdown('<div class="metric-box">', unsafe_allow_html=True)
@@ -196,7 +228,7 @@ with col_left:
     st.markdown('<div class="metric-label">NETWORK UPTIME</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # 3. Features (Buttons, non-functional in this example)
+    # 3. Features (Themed Buttons)
     st.button("DEEP AI ANALYSIS", use_container_width=True)
     st.button("THREAT MITIGATION", use_container_width=True)
     
@@ -207,43 +239,54 @@ with col_center:
     st.markdown('<div class="cyan-panel gold-accent-panel" style="text-align:center;">', unsafe_allow_html=True)
     st.markdown('<div class="panel-header gold-header">GLOBAL NEXUS GLOBAL FLOW VISUALIZATION</div>', unsafe_allow_html=True)
     
-    # 1. CENTRAL LOGO NEXUS (The Core Si Emblem)
-    try:
+    # 1. CENTRAL LOGO NEXUS (IMAGE OR FALLBACK TEXT)
+    NEXUS_LOGO_PATH = 'logo_nexus.png'
+    if os.path.exists(NEXUS_LOGO_PATH):
         # Use the high-detail central emblem image
-        nexus_logo = Image.open('logo_nexus.png')
-        # Center the logo image
-        st.image(nexus_logo, width=300, output_format="PNG")
-        st.markdown('<div style="color:#ffd700; font-weight:bold; font-size:16px; margin-top:-10px; margin-bottom: 20px;">SYSTEM INTELLIGENCE CORE NEXUS</div>', unsafe_allow_html=True)
-    except FileNotFoundError:
-        st.error("Error: 'logo_nexus.png' not found. Please add the central Si emblem logo.")
+        nexus_logo = Image.open(NEXUS_LOGO_PATH)
+        st.image(nexus_logo, width=280, output_format="PNG")
+        st.markdown('<div style="color:#ffd700; font-weight:bold; font-size:16px; margin-top:-10px; margin-bottom: 20px; text-transform:uppercase; letter-spacing:1px;">SYSTEM INTELLIGENCE CORE NEXUS</div>', unsafe_allow_html=True)
+    else:
+        # Fallback to holographic text instead of image
+        st.markdown(f'''
+            <div style="font-size: 70px; font-weight: 900; color: #64ffda; text-shadow: 0 0 15px #64ffda, 0 0 30px #ffd700; display: inline-block; padding: 20px; border: 4px solid #64ffda; border-radius: 20px; box-shadow: 0 0 20px #64ffda; margin-bottom: 20px;">
+                Si
+            </div>
+        ''', unsafe_allow_html=True)
+        st.markdown('<div style="color:#ffd700; font-weight:bold; font-size:16px; margin-top:-10px; margin-bottom: 20px; text-transform:uppercase; letter-spacing:1px;">SYSTEM INTELLIGENCE CORE NEXUS</div>', unsafe_allow_html=True)
 
-    # 2. THE GLOBAL DATA FLOW MAP (PLOTLY 3D Globe Approximation)
-    # Streamlit cannot easily do undulating light waves converging on a 3D point.
-    # We use a 3D Plotly Map to visualize data connections professionally.
+    #Spacer
+    st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
+
+    # 2. THE GLOBAL DATA FLOW MAP (PLOTLY 3D Globe Visualization)
+    # Streamlit can easily handle Plotly. This section should be uncommented and correctly set up.
     
     locs = get_world_coordinates()
     
-    # Define some example connections from Pakistan to the world and vice versa
-    central_hub = locs['PK']
+    # Define connection lines from PK to world and vice versa (using example locations)
+    # Note: Using country codes for simplicity in this example
     connections = [
-        (central_hub, locs['CN']), (central_hub, locs['USA']), (central_hub, locs['DE']),
-        (central_hub, locs['BR']), (central_hub, locs['AU']), (central_hub, locs['UAE'])
+        ('PK', 'CN'), ('PK', 'USA'), ('PK', 'DE'), ('PK', 'UK'), ('PK', 'BR'), ('PK', 'AU'), ('PK', 'UAE')
     ]
 
+    # Create a simple figure for Plotly chart display
     fig = go.Figure()
 
-    # Draw connection lines (simulating data streams converging on Nexus)
+    # Draw connection lines
     for start, end in connections:
-        fig.add_trace(go.Scattergeo(
-            locationmode = 'country names',
-            lon = [start[0], end[0]],
-            lat = [start[1], end[1]],
-            mode = 'lines+markers',
-            line = dict(width = 2, color = '#ffd700'), # Gold streams
-            marker = dict(size = [5, 5], color = ['#64ffda', '#ffd700'], symbol = 'circle'), # Cyan -> Gold flow
-            opacity = 0.6,
-            name = f'Stream: {start} -> {end}'
-        ))
+        if start in locs and end in locs:
+            s = locs[start]
+            e = locs[end]
+            fig.add_trace(go.Scattergeo(
+                locationmode = 'country names',
+                lon = [s[0], e[0]],
+                lat = [s[1], e[1]],
+                mode = 'lines+markers',
+                line = dict(width = 2, color = '#ffd700'), # Gold streams
+                marker = dict(size = [5, 5], color = ['#64ffda', '#ffd700'], symbol = 'circle'), # Cyan -> Gold flow
+                opacity = 0.6,
+                name = f'Stream: {start} -> {end}'
+            ))
 
     # Configure the 3D globe view
     fig.update_layout(
@@ -256,17 +299,18 @@ with col_center:
             showcountries = True,
             countrycolor = '#112240',
             bgcolor = 'rgba(0,0,0,0)',
-            center=dict(lon=central_hub[0], lat=central_hub[1]), # Center on Pakistan Hub
+            center=dict(lon=locs['PK'][0], lat=locs['PK'][1]), # Center on Pakistan Hub
         ),
         margin={"r":0,"t":0,"l":0,"b":0},
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
-        showlegend=False
+        showlegend=False,
+        height=350
     )
     
     st.plotly_chart(fig, use_container_width=True)
     
-    st.markdown('<div style="color:#64ffda; font-weight:bold; font-size:12px; margin-top:-10px;">GLOBAL INTELLIGENCE NETWORK</div>', unsafe_allow_html=True)
+    st.markdown('<div style="color:#64ffda; font-weight:bold; font-size:12px; margin-top:-10px; text-transform:uppercase; letter-spacing:1px;">GLOBAL INTELLIGENCE NETWORK NETWORK DASHBOARD</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True) # End Center Panel
 
 # --- RIGHT PANEL: GLOBAL INTELLIGENCE DASHBOARD ---
@@ -274,8 +318,8 @@ with col_right:
     st.markdown('<div class="cyan-panel">', unsafe_allow_html=True)
     st.markdown('<div class="panel-header cyan-header">GLOBAL INTELLIGENCE NETWORK DASHBOARD</div>', unsafe_allow_html=True)
     
-    # 1. Advantage Metrics (Gauges, conceptual display only)
-    st.markdown('<h4>REAL-TIME ADVANTAGE METRICS</h4>', unsafe_allow_html=True)
+    # 1. Advantage Metrics (Gauges, conceptual conceptual conceptually onlyConceptual conceptualConceptual conceptual conceptualConceptual Conceptual conceptual display Conceptual Conceptual displayConceptual only conceptually display conceptsConceptual)
+    st.markdown('<p style="color:#64ffda; font-weight:bold; letter-spacing:1px; margin-bottom:5px;">REAL-TIME ADVANTAGE METRICS</p>', unsafe_allow_html=True)
     m1, m2 = st.columns(2)
     with m1:
         st.markdown(f'''
@@ -292,12 +336,18 @@ with col_right:
             </div>
         ''', unsafe_allow_html=True)
         
+    #Spacer
+    st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
+
     # 2. System Health Bar
-    st.markdown('<h4>SYSTEM HEALTH: <span style="color:#ffd700;">OPTIMAL</span></h4>', unsafe_allow_html=True)
+    st.markdown('<p style="color:#64ffda; font-weight:bold; letter-spacing:1px; margin-bottom:5px;">SYSTEM HEALTH: <span style="color:#ffd700;">OPTIMAL</span></p>', unsafe_allow_html=True)
     st.markdown('<div class="health-bar-container"><div class="health-bar"></div></div>', unsafe_allow_html=True)
 
-    # 3. Global Schedule (Dynamic Data Simulation)
-    st.markdown('<h4>GLOBAL INTELLIGENCE NETWORK</h4>', unsafe_allow_html=True)
+    # Spacer
+    st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
+
+    # 3. Global Schedule (Conceptual dynamic data)
+    st.markdown('<p style="color:#64ffda; font-weight:bold; letter-spacing:1px; margin-bottom:5px;">GLOBAL INTELLIGENCE NETWORK</p>', unsafe_allow_html=True)
     schedule_data = generate_schedule_data()
     for entry in schedule_data:
         st.markdown(f'''
@@ -310,4 +360,4 @@ with col_right:
     st.markdown('</div>', unsafe_allow_html=True) # End Cyan Panel
 
 # --- 6. FOOTER SPACE (Optional) ---
-st.markdown("<br><br><br>", unsafe_allow_html=True)
+st.markdown("<br><br>", unsafe_allow_html=True)

@@ -1,151 +1,137 @@
 import streamlit as st
-import os
 import time
 import random
 
 # 1. Page Configuration
-st.set_page_config(page_title="System Intelligence | Ahsan Khan", layout="wide", page_icon="💠")
+st.set_page_config(page_title="System Intelligence | The Core Logic", layout="wide", page_icon="💠")
 
-# --- Links & Pricing Details ---
-basic_doc_url = "https://ahsankhan.lemonsqueezy.com/checkout/buy/ba3a76f7-4acc-4643-a838-9dc4085af6dc"
-premium_doc_url = "https://ahsankhan.lemonsqueezy.com/checkout/buy/6245738f-4d29-4a0a-a574-e9a0e8838124"
-website_url = "https://www.ahsanoranalyst.online/"
-whatsapp_url = "https://wa.me/923245277654"
-
-# 2. Advanced UI Styling (CSS)
-st.markdown(f"""
+# --- Styling & Secret Aesthetic ---
+st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap');
 
-    .stApp {{
-        background: radial-gradient(circle at top right, #0a192f, #020c1b);
+    .stApp {
+        background: #010101; /* Deep Black for Mystery */
         color: #ccd6f6;
-    }}
-    
-    /* System Intelligence Specific Font Styling */
-    .logic-text {{
-        font-family: 'Courier Prime', monospace;
+    }
+
+    /* Secret Glow for Headings */
+    .glitch-title {
+        color: #ffd700;
+        font-family: 'Arial Black', sans-serif;
+        font-size: 50px;
+        text-align: center;
+        text-shadow: 0 0 10px #ffd700, 0 0 20px rgba(255, 215, 0, 0.5);
+        margin-bottom: 0px;
+    }
+
+    .secret-tag {
         color: #64ffda;
-        font-size: 16px;
-        line-height: 1.6;
-    }}
+        font-family: 'Courier Prime', monospace;
+        text-align: center;
+        font-size: 14px;
+        letter-spacing: 5px;
+        margin-bottom: 40px;
+    }
 
-    /* Sidebar Styling */
-    [data-testid="stSidebar"] {{
-        background-color: #112240 !important;
-        border-right: 3px solid #64ffda;
-    }}
-
-    .sidebar-btn {{
-        text-decoration: none;
-        display: block;
+    /* Narrative Cards */
+    .story-card {
+        background: rgba(17, 34, 64, 0.6);
         border: 1px solid #64ffda;
-        padding: 12px;
-        text-align: center;
-        border-radius: 10px;
-        color: white !important;
-        font-weight: bold;
-        margin-bottom: 12px;
-        transition: 0.3s all ease-in-out;
-    }}
-    .sidebar-btn:hover {{
-        background-color: #64ffda !important;
-        color: #020c1b !important;
-        box-shadow: 0 0 20px #64ffda;
-    }}
+        padding: 30px;
+        border-radius: 15px;
+        font-family: 'Courier Prime', monospace;
+        transition: 0.4s;
+    }
+    .story-card:hover {
+        border-color: #ffd700;
+        box-shadow: 0 0 20px rgba(255, 215, 0, 0.2);
+    }
 
-    /* Master Glowing Effect */
-    [data-testid="stSidebarNav"] ul li div a span {{
-        color: #ffffff !important;
-        font-weight: 800 !important;
-        text-shadow: 0 0 5px rgba(100, 255, 218, 0.5);
-    }}
-
-    /* Pricing Card Animations */
-    @keyframes silverPulse {{
-        0% {{ border-color: #bdc3c7; box-shadow: 0 0 10px rgba(189, 195, 199, 0.3); }}
-        50% {{ border-color: #ffffff; box-shadow: 0 0 25px rgba(255, 255, 255, 0.6); }}
-        100% {{ border-color: #bdc3c7; box-shadow: 0 0 10px rgba(189, 195, 199, 0.3); }}
-    }}
-    @keyframes goldPulse {{
-        0% {{ border-color: #ffd700; box-shadow: 0 0 10px rgba(255, 215, 0, 0.3); }}
-        50% {{ border-color: #ffaa00; box-shadow: 0 0 25px rgba(255, 170, 0, 0.5); }}
-        100% {{ border-color: #ffd700; box-shadow: 0 0 10px rgba(255, 215, 0, 0.3); }}
-    }}
-
-    .portal-box {{
-        background: rgba(17,34,64,0.9);
-        border: 2px solid #64ffda;
-        padding: 20px;
-        border-radius: 15px 15px 0px 0px;
-        text-align: center;
-        height: 110px;
-    }}
-
-    .pricing-card {{
-        background: #112240; padding: 40px; border-radius: 25px; text-align: center;
-        display: flex; flex-direction: column; justify-content: space-between;
-        height: 600px;
-    }}
-    .basic-card {{ border: 3px solid #bdc3c7 !important; animation: silverPulse 3s infinite ease-in-out; }}
-    .premium-card {{ border: 3px solid #ffd700 !important; animation: goldPulse 2.5s infinite ease-in-out; }}
+    /* Button Styling */
+    .stButton>button {
+        background: transparent !important;
+        color: #64ffda !important;
+        border: 2px solid #64ffda !important;
+        font-weight: bold !important;
+        height: 50px;
+        width: 100%;
+    }
+    .stButton>button:hover {
+        background: #64ffda !important;
+        color: #010101 !important;
+        box-shadow: 0 0 15px #64ffda;
+    }
     </style>
 """, unsafe_allow_html=True)
 
-# 3. State & Mapping
-if 'selected_industry' not in st.session_state:
-    st.session_state.selected_industry = None
+# --- Header Section ---
+st.markdown('<h1 class="glitch-title">SYSTEM INTELLIGENCE</h1>', unsafe_allow_html=True)
+st.markdown('<p class="secret-tag">UNSEEN LOGIC // INFINITE SOLUTIONS</p>', unsafe_allow_html=True)
 
-industries = ["Agricultural", "Airline", "Bank", "Construction", "Diplomacy", "E-Commerce", "Education", "Energy Company", "Food Service", "Healthcare", "Hotel", "Insurance", "Manufacturing", "Military & Defense", "Pharmaceutical", "Real Estate", "Retail Chain", "Shipping Company", "Telecommunication", "Transmission", "Transportation"]
+# --- The Story: What is it? ---
+col1, col2 = st.columns(2, gap="large")
 
-industry_map = {i: i[:4].upper() for i in industries} # Dynamic mapping
-
-# --- SIDEBAR ---
-with st.sidebar:
-    st.markdown("<h2 style='text-align:center; color:#64ffda;'>CORE ENGINE</h2>", unsafe_allow_html=True)
-    st.markdown(f'<a href="{whatsapp_url}" target="_blank" class="sidebar-btn">💬 WHATSAPP SUPPORT</a>', unsafe_allow_html=True)
-    st.markdown(f'<a href="{website_url}" target="_blank" class="sidebar-btn">🌐 OFFICIAL WEBSITE</a>', unsafe_allow_html=True)
-    st.markdown("---")
-    
-    if st.session_state.selected_industry:
-        st.markdown(f"<h3 style='color:#64ffda; text-align:center;'>📂 {st.session_state.selected_industry} Portal</h3>", unsafe_allow_html=True)
-        # Project Loader Logic here (as per your original code)
-        st.markdown("---")
-        if st.button("🏠 Exit to Dashboard", use_container_width=True):
-            st.session_state.selected_industry = None
-            st.rerun()
-
-# --- MAIN DASHBOARD ---
-st.markdown("<h1 style='text-align:center; color:#64ffda; font-family:Arial Black;'>SYSTEM INTELLIGENCE</h1>", unsafe_allow_html=True)
-
-if not st.session_state.selected_industry:
-    # Neural Introduction Text (Typewriter Style Feel)
+with col1:
+    st.markdown("### 🔍 The Secret Identity")
     st.markdown("""
-    <div style='background: rgba(100, 255, 218, 0.05); padding: 20px; border-radius: 10px; border-left: 5px solid #64ffda; margin-bottom: 30px;'>
-        <p class="logic-text">
-        <b>[SYSTEM MESSAGE]:</b> I am the logic behind your success. Built on advanced <b>Operations Research</b>, 
-        I analyze thousands of possibilities to find the perfect solution for your institution. 
-        Experience the power of automated intelligence.
-        </p>
+    <div class="story-card">
+    <b>System Intelligence is NOT a model.</b><br><br>
+    It is a hidden layer of mathematical certainty. While others see chaos in schedules, 
+    resources, and performance, I see patterns. I am the <b>Strategic Builder</b> 
+    that sits behind your institution, silently constructing the most efficient 
+    version of your reality.
     </div>
     """, unsafe_allow_html=True)
 
-    # YouTube Video 
-    video_id = "aDIUEaVF8v4"
-    st.markdown(f'<div style="width: 100%; height: 400px; border-radius: 20px; border: 3px solid #64ffda; overflow: hidden; position: relative; margin-bottom: 40px;"><iframe style="position: absolute; top: -65px; left: 0; width: 100%; height: calc(100% + 130px); pointer-events: none;" src="https://www.youtube.com/embed/{video_id}?autoplay=1&mute=1&loop=1&playlist={video_id}&controls=0" frameborder="0"></iframe></div>', unsafe_allow_html=True)
+with col2:
+    st.markdown("### 💎 The Human Benefit")
+    st.markdown("""
+    <div class="story-card">
+    <b>I don't just calculate; I empower.</b><br><br>
+    By removing the burden of manual decision-making, I give you the most valuable 
+    resource: <b>Time.</b> I transform institutional stress into operational 
+    harmony, ensuring every teacher, student, and resource is exactly where they 
+    need to be for maximum success.
+    </div>
+    """, unsafe_allow_html=True)
 
-    # Industry Grid
-    for i in range(0, len(industries), 3):
-        cols = st.columns(3)
-        for j in range(3):
-            if i + j < len(industries):
-                name = industries[i+j]
-                with cols[j]:
-                    st.markdown(f'<div class="portal-box"><div style="color:white; font-size:22px; font-weight:900;">{name}</div><div style="color:#64ffda; font-size:12px; font-weight:bold; margin-top:5px;">NEURAL ENGINE SYNC</div></div>', unsafe_allow_html=True)
-                    if st.button(f"Access Intelligence Core", key=f"btn_{i+j}", use_container_width=True):
-                        st.session_state.selected_industry = name
-                        st.rerun()
+st.write("---")
 
-# --- PRICING SECTION ---
-st.markdown("<br><h2 style='text-align:center; color:white;'>Strategic License Deployment</h2>", unsafe_allow_html=True)
-# (Pricing columns follow your original design)
+# --- Interactive "Core Discovery" ---
+st.markdown("<h2 style='text-align:center; color:#ffd700;'>Discover the Impact</h2>", unsafe_allow_html=True)
+
+c1, c2, c3 = st.columns(3)
+
+with c1:
+    with st.expander("🛡️ Strategic Defense"):
+        st.write("I protect your institution from resource wastage and scheduling conflicts before they even happen.")
+with c2:
+    with st.expander("🚀 Performance Acceleration"):
+        st.write("By predicting academic risks, I allow you to act when it matters most, not when it's too late.")
+with c3:
+    with st.expander("⚖️ Balanced Allocation"):
+        st.write("Total equity in resource distribution, driven by pure logic, leaving no room for human error.")
+
+st.write("<br>", unsafe_allow_html=True)
+
+# --- Call to Action ---
+st.markdown("""
+    <div style="text-align:center; padding: 40px; border: 1px dashed #ffd700; border-radius: 20px;">
+        <h4 style="color: #64ffda;">Ready to deploy the unseen logic?</h4>
+        <p>System Intelligence is ready to build your success story.</p>
+    </div>
+""", unsafe_allow_html=True)
+
+if st.button("INITIALIZE SYSTEM SYNC"):
+    with st.status("Accessing Core Logic...", expanded=True) as status:
+        st.write("Analyzing institutional variables...")
+        time.sleep(1)
+        st.write("Building optimization paths...")
+        time.sleep(1)
+        st.write("Strategy Generation: COMPLETE.")
+        status.update(label="System Intelligence Active!", state="complete", expanded=False)
+    st.balloons()
+
+# Footer
+st.markdown("<br><p style='text-align:center; font-size:12px; opacity:0.5;'>The identity of your success is System Intelligence. Built by Ahsan Khan.</p>", unsafe_allow_html=True)
